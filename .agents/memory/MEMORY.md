@@ -1,1 +1,2 @@
 - [Preview routing](preview-routing.md) — When root-app APIs return 404 only in Preview, check starter artifact path precedence and stale port-3000 processes.
+- [GitHub publishing](github-publishing.md) — Commit and push to `main` only when the user explicitly asks; connection access is not standing approval.
