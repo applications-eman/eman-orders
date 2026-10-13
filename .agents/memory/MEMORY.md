@@ -1,0 +1,1 @@
+- [Preview routing](preview-routing.md) — When root-app APIs return 404 only in Preview, check starter artifact path precedence and stale port-3000 processes.
