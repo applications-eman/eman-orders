@@ -13,7 +13,8 @@ app.disable('x-powered-by');
 
 app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('X-Frame-Options', 'DENY');
+  // Nobody may frame the app, except Replit's own preview pane (it shows the app inside a frame)
+  res.setHeader('Content-Security-Policy', "frame-ancestors 'self' https://replit.com https://*.replit.com https://*.replit.dev https://*.repl.co");
   res.setHeader('Referrer-Policy', 'same-origin');
   next();
 });
