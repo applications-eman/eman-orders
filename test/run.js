@@ -287,6 +287,18 @@ const login = async (email, password) => (await call('POST', '/api/login', { ema
   await ok('only the administrator reaches admin functions', async () => {
     assert.equal((await call('POST', '/api/admin/users', {}, sidheek)).status, 403);
     assert.equal((await call('PUT', '/api/admin/price', { cust: 'SLM-001', prod: 'PRD-001', price: 1 }, sidheek)).status, 403);
+    assert.equal((await call('PUT', '/api/admin/customers/SLM-003', { active: false }, sidheek)).status, 403);
+  });
+  await ok('admin can switch a customer off and on; it is logged', async () => {
+    assert.equal((await call('PUT', '/api/admin/customers/SLM-003', { active: false }, admin)).status, 200);
+    let st = (await call('GET', '/api/state', null, admin)).body;
+    assert.equal(st.customers.find(c => c.code === 'SLM-003').active, false);
+    assert.equal((await call('PUT', '/api/admin/customers/SLM-003', { active: true }, admin)).status, 200);
+    st = (await call('GET', '/api/state', null, admin)).body;
+    assert.equal(st.customers.find(c => c.code === 'SLM-003').active, true);
+    assert(st.audit.some(a => a.action === 'Customer switched off'));
+    assert.equal((await call('PUT', '/api/admin/customers/NOPE', { active: false }, admin)).status, 404);
+    assert.equal((await call('PUT', '/api/admin/customers/SLM-003', {}, admin)).status, 400);
   });
   await ok('overdue pending order locks new orders and payments (not for admin)', async () => {
     const c = await call('POST', '/api/orders', { branch: 'Hira Branch', cust: 'SLM-003', traysIn: 0, lines: [{ code: 'PRD-001', qty: 1 }] }, sidheek);

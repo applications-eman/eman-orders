@@ -415,6 +415,19 @@ router.post('/admin/customers', adminOnly, wrap(async (req, res) => {
   res.json({ code });
 }));
 
+// switch a customer on or off (hidden customers stay in the books and in old orders)
+router.put('/admin/customers/:code', adminOnly, wrap(async (req, res) => {
+  const b = req.body || {};
+  if (typeof b.active !== 'boolean') throw new Bad('Say whether the customer is active.');
+  const c = (await db.q('select name,active from customers where code=$1', [req.params.code])).rows[0];
+  if (!c) throw new Bad('Customer not found.', 404);
+  if (c.active !== b.active) {
+    await db.q('update customers set active=$2 where code=$1', [req.params.code, b.active]);
+    await audit(req.user.name, b.active ? 'Customer switched on' : 'Customer switched off', 'Customer', c.name, req.params.code);
+  }
+  res.json({ ok: true });
+}));
+
 router.put('/admin/price', adminOnly, wrap(async (req, res) => {
   const b = req.body || {};
   const c = (await db.q('select name from customers where code=$1', [b.cust])).rows[0];
