@@ -1,4 +1,6 @@
-# Eman Bakery orders app
+# eman-orders
+
+**Eman Bakery orders app**
 
 Orders, payments, credit notes and trays for Eman Bakery, Jeddah. The app is the working system for orders. Odoo (Accounting only, SAR, no VAT) receives only the final documents: invoices, payments and credit notes.
 
