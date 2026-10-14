@@ -38,6 +38,15 @@ function noteFail(key) {
   else e.n++;
 }
 
+// Normal use: strict same-site cookie. Only while testing inside Replit's preview frame (not in the published app)
+// the cookie must also work inside that frame, so it is set as a partitioned cross-site cookie there.
+function cookieAttrs(req) {
+  const secure = req.secure || req.headers['x-forwarded-proto'] === 'https';
+  const replitPreview = !!process.env.REPL_ID && !process.env.REPLIT_DEPLOYMENT;
+  if (secure && replitPreview) return 'Path=/; HttpOnly; Secure; SameSite=None; Partitioned';
+  return `Path=/; HttpOnly; SameSite=Lax${secure ? '; Secure' : ''}`;
+}
+
 router.post('/login', wrap(async (req, res) => {
   const email = String(req.body.email || '').trim().toLowerCase();
   const pw = String(req.body.password || '');
@@ -49,14 +58,13 @@ router.post('/login', wrap(async (req, res) => {
   if (!u.active) throw new Bad('This account is disabled. Ask the administrator.', 403);
   tries.delete(key);
   const tok = signToken({ uid: u.id, exp: Date.now() + SESSION_MS });
-  const secure = req.secure || req.headers['x-forwarded-proto'] === 'https';
-  res.setHeader('Set-Cookie', `${COOKIE}=${encodeURIComponent(tok)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${SESSION_MS / 1000}${secure ? '; Secure' : ''}`);
+  res.setHeader('Set-Cookie', `${COOKIE}=${encodeURIComponent(tok)}; ${cookieAttrs(req)}; Max-Age=${SESSION_MS / 1000}`);
   await audit(u.name, 'Signed in', 'User', u.name, '');
   res.json({ ok: true });
 }));
 
 router.post('/logout', (req, res) => {
-  res.setHeader('Set-Cookie', `${COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`);
+  res.setHeader('Set-Cookie', `${COOKIE}=; ${cookieAttrs(req)}; Max-Age=0`);
   res.json({ ok: true });
 });
 

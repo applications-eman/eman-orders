@@ -52,6 +52,19 @@ const login = async (email, password) => (await call('POST', '/api/login', { ema
     const r = await call('POST', '/api/login', { email: 'admin@test.local', password: 'nope' });
     assert.equal(r.status, 401);
   });
+  await ok('session cookie is strict normally and frame-friendly only in the Replit preview', async () => {
+    const raw = async xf => (await fetch(base + '/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-forwarded-proto': xf }, body: JSON.stringify({ email: 'admin@test.local', password: 'admin-pass-123' }) })).headers.get('set-cookie');
+    const plain = await raw('https');
+    assert(/SameSite=Lax/.test(plain) && !/Partitioned/.test(plain));
+    process.env.REPL_ID = 'x';
+    const prev = await raw('https');
+    delete process.env.REPL_ID;
+    assert(/SameSite=None/.test(prev) && /Secure/.test(prev) && /Partitioned/.test(prev));
+    process.env.REPL_ID = 'x'; process.env.REPLIT_DEPLOYMENT = '1';
+    const pub = await raw('https');
+    delete process.env.REPL_ID; delete process.env.REPLIT_DEPLOYMENT;
+    assert(/SameSite=Lax/.test(pub) && !/Partitioned/.test(pub));
+  });
   await ok('state needs sign in', async () => assert.equal((await call('GET', '/api/state')).status, 401));
   await ok('starting data loads', async () => {
     const r = await call('POST', '/api/admin/import', {

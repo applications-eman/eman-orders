@@ -1166,7 +1166,10 @@ function snapForm(){formSnap={};['ca','cnn'].forEach(i=>{const e=document.getEle
 function restoreForm(){Object.keys(formSnap).forEach(i=>{const e=document.getElementById(i);if(e)e.value=formSnap[i]})}
 async function login(email,pw){
   const e=$('#lerr');if(e)e.textContent='';
-  try{await api('POST','/api/login',{email,password:pw});await refresh();UI.view='home';render()}
+  try{
+    await api('POST','/api/login',{email,password:pw});await refresh();
+    if(!S||!S.session){const el=$('#lerr');if(el)el.textContent='Your password is right, but this browser blocked the sign-in cookie. Open the app in its own browser tab (not inside a preview frame) and sign in there.';return}
+    UI.view='home';render()}
   catch(x){const el=$('#lerr');if(el)el.textContent=x.message}
 }
 document.addEventListener('submit',e=>{
