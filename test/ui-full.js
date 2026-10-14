@@ -53,6 +53,7 @@ let checks = 0;
   const b = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium' });
 
   async function run(name, w, h, email, password, steps) {
+    if (process.env.ONLY && !process.env.ONLY.split(',').includes(name)) return;
     const ctx = await b.newContext({ viewport: { width: w, height: h }, hasTouch: w < 800, isMobile: w < 800, deviceScaleFactor: 2 });
     const pg = await ctx.newPage();
     pg.setDefaultTimeout(6000);
@@ -61,12 +62,12 @@ let checks = 0;
     pg.on('dialog', d => d.accept());
     const step = async (label, fn) => {
       checks++;
-      try { await fn(); } catch (e) { problems.push(`[${name}] ${label}: ${String(e.message).split('\n')[0]}`); }
+      try { await fn(); } catch (e) { problems.push(`[${name}] ${label}: ${String(e.message).split('\n').slice(0, process.env.VERBOSE ? 12 : 1).join(' | ')}`); }
     };
     const click = (sel, o = {}) => pg.click(sel, { timeout: 4000, ...o });
     const nav = async id => {
-      const direct = await pg.$(`.tabbar [data-act="nav"][data-id="${id}"], .side [data-act="nav"][data-id="${id}"]`);
-      if (direct && await direct.isVisible()) { await direct.click({ timeout: 4000 }); return; }
+      const sel = `:is(.tabbar,.side) [data-act="nav"][data-id="${id}"]:visible`;
+      if (await pg.locator(sel).count()) { await click(sel); return; }
       await click('[data-act="more"]');
       await click(`.modal [data-act="nav"][data-id="${id}"]`);
     };
@@ -134,7 +135,7 @@ let checks = 0;
     await step('new order: cart and create', async () => {
       if (w < 1100) { await click('[data-act="opencart"]'); await shot('cart'); await click('.modal [data-act="create"]'); }
       else await click('.cart [data-act="create"]');
-      await pg.waitForSelector('.modal .rcpt'); await shot('created'); await click('[data-act="closemodal"]');
+      await pg.waitForSelector('.modal .rcpt'); await shot('created'); await click('.modal button[data-act="closemodal"]');
     });
     await step('pending: edit then save', async () => {
       await nav('pending'); await shot('pending'); await layout('pending');
@@ -147,7 +148,7 @@ let checks = 0;
       const cats = await pg.$$('.catgrid [data-act="cat"]'); await cats[0].click(); const pcs = await pg.$$('[data-act="pcs"]'); if (pcs.length) await pcs[0].click();
       await click('.pt[data-act="padd"]');
       if (w < 1100) { await click('[data-act="opencart"]'); await click('.modal [data-act="create"]'); } else await click('.cart [data-act="create"]');
-      await click('[data-act="closemodal"]'); await nav('pending');
+      await click('.modal button[data-act="closemodal"]'); await nav('pending');
       const n = (await pg.$$('[data-act="cancelord"]')).length;
       await click('[data-act="cancelord"]'); await pg.fill('#crs', 'test cancel'); await click('[data-act="docancel"]');
       await pg.waitForFunction(k => document.querySelectorAll('[data-act="cancelord"]').length === k - 1, n);
@@ -156,11 +157,11 @@ let checks = 0;
       await click('[data-act="fin"]'); await pg.waitForSelector('[data-act="mset"]');
       await click('[data-act="mkey"][data-id="3"]'); await click('[data-act="mkey"][data-id="B"]'); await click('[data-act="mset"][data-id="5"]'); await shot('finalize'); await layout('finalize');
       await click('[data-act="dofin"]'); await pg.waitForFunction(() => /Invoice posted/.test(document.body.innerText), null, { timeout: 20000 }); await shot('done');
-      await click('.modal [data-act="closemodal"]');
+      await click('.modal button[data-act="closemodal"]');
     });
     await step('orders: tabs, search, details', async () => {
       await nav('orders'); await shot('orders'); await layout('orders');
-      await click('[data-act="orddet"]'); await pg.waitForSelector('.modal'); await shot('order_detail'); await click('.modal [data-act="closemodal"]');
+      await click('[data-act="orddet"]'); await pg.waitForSelector('.modal'); await shot('order_detail'); await click('.modal button[data-act="closemodal"]');
       for (const t of ['pending', 'cancelled', 'final']) await click(`[data-act="tab"][data-id="${t}"]`);
       await pg.fill('[data-list="ordList"]', 'zzzz'); await pg.fill('[data-list="ordList"]', '');
     });
@@ -191,13 +192,13 @@ let checks = 0;
     });
     await step('day statement: preview and print', async () => {
       await nav('daily'); await shot('daily'); await layout('daily');
-      await click('[data-act="dayview"]'); await pg.waitForSelector('.dsview'); await shot('daily_preview'); await click('[data-act="dayfmt"][data-id="slip"]'); await click('.modal [data-act="closemodal"]');
+      await click('[data-act="dayview"]'); await pg.waitForSelector('.dsview'); await shot('daily_preview'); await click('.modal [data-act="dayfmt"][data-id="slip"]'); await click('.modal button[data-act="closemodal"]');
       await click('[data-act="dayprint"]');
     });
     await step('odoo sync screen', async () => { await nav('sync'); await shot('sync'); await layout('sync'); });
     await step('staff cannot see admin', async () => { if (await pg.$('[data-act="nav"][data-id="admin"]')) throw new Error('admin menu visible'); });
     await step('more sheet and sign out', async () => {
-      if (w < 800) { await click('[data-act="more"]'); await shot('more'); await click('[data-act="closemodal"] >> nth=0', { position: { x: 5, y: 5 } }).catch(() => {}); }
+      if (w < 800) { await click('[data-act="more"]'); await shot('more'); await click('.modal [data-act="nav"] >> nth=0').catch(() => {}); }
       await pg.evaluate(() => document.querySelector('[data-act="logout"]').click()); await pg.waitForSelector('[data-act="gologin"], #lf');
     });
   };
@@ -216,12 +217,12 @@ let checks = 0;
       await click('[data-act="usernew"]'); await pg.fill('#un', 'Jasil'); await pg.fill('#ue', 'jasil@test.local'); await pg.fill('#uk', 'key-jasil'); await pg.fill('#up', 'jasil-pass-1'); await shot('add_user'); await layout('add user');
       await click('#uf button[type=submit]'); await pg.waitForFunction(() => /Jasil/.test(document.querySelector('.tbl') ? document.querySelector('.tbl').innerText : ''), null, { timeout: 8000 });
     });
-    await step('admin: edit user', async () => { await click('[data-act="useredit"] >> nth=1'); await pg.waitForSelector('#uf'); await click('#uf [data-act="closemodal"]'); });
+    await step('admin: edit user', async () => { await click('[data-act="useredit"] >> nth=1'); await pg.waitForSelector('#uf'); await click('#uf button[data-act="closemodal"]'); });
     await step('admin: products add, edit', async () => {
       await click('[data-act="tab"][data-id="products"]'); await shot('admin_products'); await layout('admin products');
       await click('[data-act="prodnew"]'); await pg.fill('#pname', 'UI TEST BREAD'); await pg.fill('#pppi', '5'); await pg.fill('#pdf', '3.25'); await click('#pf button[type=submit]');
       await pg.waitForFunction(() => /UI TEST BREAD/.test(document.body.innerText), null, { timeout: 8000 });
-      await click('[data-act="prodedit"] >> nth=0'); await click('#pf [data-act="closemodal"]');
+      await click('[data-act="prodedit"] >> nth=0'); await click('#pf button[data-act="closemodal"]');
     });
     await step('admin: customer prices', async () => {
       await click('[data-act="tab"][data-id="custs"]'); await shot('admin_custs'); await layout('admin custs');
