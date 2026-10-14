@@ -241,6 +241,18 @@ let checks = 0;
       await click('[data-act="tab"][data-id="trayopen"]'); await shot('admin_trays'); await layout('admin trays');
       await pg.fill('#bo0', '510'); await click('#bof button[type=submit]'); await pg.waitForFunction(() => /Branch stock saved/.test(document.body.innerText), null, { timeout: 8000 });
     });
+    await step('admin: opening trays from a file (preview first, then save)', async () => {
+      const f = path.join(out, 'trays_test.json');
+      fs.writeFileSync(f, JSON.stringify([{ name: '  ' + data.C[0][1].toLowerCase() + ' ', outstanding: tag === 'adminphone' ? 9 : 10 }, { name: 'NOT A CUSTOMER', outstanding: 5 }]));
+      await pg.setInputFiles('#otf', f);
+      await pg.waitForFunction(() => /customers? found by name/.test(document.body.innerText), null, { timeout: 8000 });
+      const t = await pg.innerText('.content');
+      if (!/not customers here/.test(t) || !/NOT A CUSTOMER/.test(t)) throw new Error('unknown name was not reported');
+      if (!/preview, nothing saved yet/.test(t)) throw new Error('not shown as a preview');
+      await shot('admin_tray_file'); await layout('admin tray file');
+      await click('[data-act="otapply"]');
+      await pg.waitForFunction(() => /Opening trays saved/.test(document.body.innerText), null, { timeout: 8000 });
+    });
     await step('admin: data and Odoo', async () => {
       await click('[data-act="tab"][data-id="data"]'); await shot('admin_data'); await layout('admin data');
       await click('[data-act="odootest"]'); await pg.waitForFunction(() => /Connected/.test(document.body.innerText), null, { timeout: 10000 });

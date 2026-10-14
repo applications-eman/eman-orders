@@ -836,6 +836,7 @@ function vAdmin(){
     b=UI.sel.admCust?custDetail(UI.sel.admCust,true):`<div class="row sp" style="margin-bottom:12px"><div class="search" style="flex:1;max-width:420px"><span>${ic('search',18)}</span><input class="inp" data-list="acList" placeholder="Search customers" value="${esc(UI.q.acList||'')}" autocomplete="off"></div><button class="btn pri" data-act="custnew">${ic('plus',16)} Add customer</button></div><div class="card" style="padding:6px 12px"><div class="list" id="acList">${lAC()}</div></div>`;
   } else if(t==='trayopen'){
     b=`<p class="muted" style="margin:0 0 14px;max-width:70ch">Enter the tray counts you start with. After this, trays only move through orders. Every change here is saved as a new row in the tray ledger with your name.</p>
+    ${trayFileCard()}
     <div class="grid g2" style="align-items:start"><form class="card stack" id="bof"><h3>Trays in stock at each branch</h3>${S.set.branches.map((br,i)=>`<div class="field"><label for="bo${i}">${esc(br)}</label><input class="inp num" id="bo${i}" inputmode="numeric" value="${openB(br)}"><small class="muted">In stock now: ${bstock(br)}</small></div>`).join('')}<button class="btn pri" type="submit">Save branch stock</button></form>
     <div class="card"><h3>Trays held by each customer</h3><div class="search" style="margin:8px 0"><span>${ic('search',18)}</span><input class="inp" data-list="otList" placeholder="Search customers" value="${esc(UI.q.otList||'')}" autocomplete="off"></div><div class="list" id="otList" style="max-height:480px;overflow:auto">${lOT()}</div></div></div>`;
   } else if(t==='data'){
@@ -868,6 +869,19 @@ function keyCell(u){
   const when='<div class="muted" style="font-size:12px">Checked '+fmtDT(k.t)+(k.ok&&k.odooUser?' · Odoo user: '+esc(k.odooUser):'')+'</div>';
   return k.ok?'<span class="pill good">Works</span>'+(k.note?'<div style="font-size:12px;max-width:280px;white-space:normal;color:var(--warn)">'+esc(k.note)+'</div>':'')+when
     :'<span class="pill bad">Failed</span><div style="font-size:12px;max-width:280px;white-space:normal;color:var(--bad)">'+esc(k.note)+'</div>'+when;
+}
+function trayFileCard(){
+  const p=UI.sel.otPrev;const zero=UI.sel.otZero!==false;
+  let body='';
+  if(p){
+    const un=p.unmatched.length?`<div class="hint" style="background:var(--warn-soft);color:var(--warn)">Names in the file that are not customers here. They are ignored: ${p.unmatched.slice(0,15).map(x=>esc(x.name)+' ('+x.trays+')').join(', ')}${p.unmatched.length>15?' and '+(p.unmatched.length-15)+' more':''}</div>`:'';
+    const nf=p.notInFile.length?`<div class="muted" style="font-size:13px">${p.notInFile.length} customer${p.notInFile.length>1?'s are':' is'} not in the file${zero?' and get 0 trays':''}: ${p.notInFile.slice(0,15).map(esc).join(', ')}${p.notInFile.length>15?' and '+(p.notInFile.length-15)+' more':''}</div>`:'';
+    body=`<div class="pstat ${p.changes?'':'ok'}">${p.matched} customer${p.matched===1?'':'s'} found by name · ${nf0.format(p.matchedTrays)} trays · ${p.changes} change${p.changes===1?'':'s'} to save${p.dryRun?' (preview, nothing saved yet)':''}</div>${un}${nf}
+    <div class="row"><button class="btn pri" data-act="otapply" ${p.changes?'':'disabled'}>${ic('check',18)} Save these trays</button><button class="btn" data-act="otcancel">Cancel</button></div>`;
+  }
+  return `<div class="card stack" style="margin-bottom:16px"><h3>Load customer trays from a file</h3><p class="muted" style="margin:0">Choose a JSON file that has a name (or code) and a tray count for each customer, for example your tray list. Customers are matched by name. Capital letters and extra spaces do not matter. You see a preview first. Nothing is saved until you press Save.</p>
+  <input class="inp" id="otf" type="file" accept=".json,application/json">
+  <label style="display:flex;gap:10px;align-items:center;font-weight:600"><input type="checkbox" id="otzero" ${zero?'checked':''} style="width:20px;height:20px"> Customers that are not in the file get 0 trays</label>${body}</div>`;
 }
 function readinessCard(){
   const oc=S.set.odooCheck;
@@ -1201,6 +1215,8 @@ document.addEventListener('click',e=>{
    case 'prodnew':UI.modal={type:'prod',id:null};render();break;
    case 'prodedit':UI.modal={type:'prod',id};render();break;
    case 'custnew':UI.modal={type:'cust'};render();break;
+   case 'otcancel':UI.sel.otPrev=null;UI.sel.otRows=null;render();break;
+   case 'otapply':act(async()=>{const r=await api('POST','/api/admin/trays/customers-bulk',{rows:UI.sel.otRows,zeroOthers:UI.sel.otZero!==false});UI.sel.otPrev=null;UI.sel.otRows=null;return r},r=>'Opening trays saved. '+r.changes+' customer'+(r.changes===1?'':'s')+' changed.');break;
    case 'checkkey':act(()=>api('POST','/api/admin/users/'+id+'/check-key'),r=>r.ok?'Key works with Odoo'+(r.note?'. '+r.note:''):'Key failed: '+r.note);break;
    case 'readiness':act(()=>api('POST','/api/admin/odoo/readiness'),r=>r.ok?'Odoo is ready. All checks passed.':r.failed+' problem'+(r.failed>1?'s':'')+' found. See the list.');break;
    case 'reconcile':act(()=>api('POST','/api/admin/odoo/reconcile'),r=>r.ok?'All '+r.checked+' customers match Odoo.':r.differences+' customer'+(r.differences===1?'':'s')+' differ from Odoo. See the list.');break;
@@ -1243,6 +1259,9 @@ document.addEventListener('submit',e=>{
     act(()=>api('PUT','/api/admin/settings',{finalizeMin:parseInt($('#s1').value,10)||60,autoPrint:$('#s5').checked,footer:$('#s6').value.trim()}),'Settings saved');
   }
 });
+function previewTrays(){
+  act(async()=>{const r=await api('POST','/api/admin/trays/customers-bulk',{rows:UI.sel.otRows,dryRun:true,zeroOthers:UI.sel.otZero!==false});UI.sel.otPrev=r;return r},false);
+}
 async function saveUser(){
   const m=UI.modal;const name=$('#un').value.trim(),email=$('#ue').value.trim().toLowerCase(),key=$('#uk').value,pw=$('#up').value;
   const err=x=>{$('#uerr').textContent=x};
@@ -1288,6 +1307,10 @@ document.addEventListener('change',e=>{
     if(v!==openC(cc))act(()=>api('POST','/api/admin/trays/customer',{cust:cc,qty:v}),cust(cc).name+': opening '+v+' trays saved');
   }
   else if(t.id==='auser'){UI.sel.auser=t.value;render()}
+  else if(t.id==='otzero'){UI.sel.otZero=t.checked;if(UI.sel.otRows)previewTrays();else render()}
+  else if(t.id==='otf'){const f=t.files&&t.files[0];if(!f)return;f.text().then(txt=>{let j;try{j=JSON.parse(txt)}catch(x){return toast('This file is not a JSON file')}
+    const rows=Array.isArray(j)?j:(j&&(j.customers||j.rows));if(!Array.isArray(rows)||!rows.length)return toast('No customer rows found in this file');
+    UI.sel.otRows=rows;previewTrays()})}
   else if(t.id==='offtog'){act(()=>api('PUT','/api/admin/offline',{offline:t.checked}))}
   else if(t.id==='impf'){const f=t.files&&t.files[0];if(!f)return;f.text().then(txt=>{let j;try{j=JSON.parse(txt)}catch(x){return toast('This file is not the starting-data file')}act(()=>api('POST','/api/admin/import',j),r=>'Loaded '+r.products+' products, '+r.customers+' customers ('+r.newCustomers+' new), '+r.prices+' customer prices')})}
 });

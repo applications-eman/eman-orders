@@ -504,6 +504,51 @@ router.post('/admin/trays/customer', adminOnly, wrap(async (req, res) => {
   res.json({ ok: true });
 }));
 
+// Opening trays for many customers from a file. Customers are matched by name (capital letters and extra spaces do not matter)
+// or by code. dryRun only shows what would happen. Every change is a NEW ledger row, nothing is edited.
+const normName = x => String(x || '').trim().replace(/\s+/g, ' ').toLowerCase();
+router.post('/admin/trays/customers-bulk', adminOnly, wrap(async (req, res) => {
+  const b = req.body || {};
+  const rows = Array.isArray(b.rows) ? b.rows : [];
+  if (!rows.length) throw new Bad('The file has no rows.');
+  if (rows.length > 2000) throw new Bad('Too many rows in the file.');
+  const cu = (await db.q('select code,name from customers order by name')).rows;
+  const byCode = new Map(cu.map(c => [c.code, c]));
+  const byName = new Map(cu.map(c => [normName(c.name), c]));
+  const cur = {};
+  (await db.q("select cust, coalesce(sum(qty),0) n from tray_ledger where type='opening' and cust is not null group by cust")).rows.forEach(r => { cur[r.cust] = Number(r.n); });
+  const want = new Map(), unmatched = [];
+  for (const r of rows) {
+    const label = String((r && (r.name || r.code)) || '(no name)');
+    const qty = r.qty != null ? r.qty : r.trays != null ? r.trays : r.outstanding;
+    const v = Number(qty);
+    if (qty === '' || qty == null || !Number.isInteger(v) || v < 0 || v > 100000) throw new Bad(`The tray count for ${label} must be a whole number from 0 to 100000.`);
+    const c = (r.code && byCode.get(String(r.code))) || byName.get(normName(r.name));
+    if (!c) { unmatched.push({ name: label, trays: v }); continue; }
+    if (want.has(c.code)) throw new Bad(`${c.name} appears twice in the file.`);
+    want.set(c.code, v);
+  }
+  const notInFile = cu.filter(c => !want.has(c.code));
+  const zero = b.zeroOthers ? notInFile.filter(c => (cur[c.code] || 0) !== 0) : [];
+  const changes = [...want].filter(([code, v]) => (cur[code] || 0) !== v);
+  const out = {
+    dryRun: !!b.dryRun, matched: want.size, matchedTrays: [...want.values()].reduce((a, v) => a + v, 0),
+    unmatched, notInFile: notInFile.map(c => c.name), toZero: zero.length, changes: changes.length + zero.length
+  };
+  if (!b.dryRun) {
+    await db.tx(async run => {
+      for (const [code, v] of changes) {
+        await trayRow(run, code, v - (cur[code] || 0), 'opening', 'Opening balance', `Opening count set to ${v} (from file)`, null, req.user.name);
+      }
+      for (const c of zero) {
+        await trayRow(run, c.code, 0 - cur[c.code], 'opening', 'Opening balance', 'Opening count set to 0 (not in file)', null, req.user.name);
+      }
+      await audit(req.user.name, 'Opening trays loaded from file', 'Tray', '', `${want.size} customers matched, ${out.matchedTrays} trays, ${unmatched.length} names ignored, ${out.changes} changed`, run);
+    });
+  }
+  res.json(out);
+}));
+
 // Load products, customers and the price matrix from the file Shafeeq keeps (never stored in the repository)
 router.post('/admin/import', adminOnly, wrap(async (req, res) => {
   const b = req.body || {};

@@ -371,6 +371,29 @@ const login = async (email, password) => (await call('POST', '/api/login', { ema
     const f = await call('POST', '/api/orders/' + c.body.id + '/finalize', { traysOut: 0 }, sidheek);
     assert.equal(f.status, 200, 'finalizing is still allowed');
   });
+  await ok('opening trays from a file: matched by name, unknown names ignored, preview writes nothing', async () => {
+    const rows = [{ name: ' cust c ', outstanding: 7 }, { name: 'SOMEONE ELSE', outstanding: 99 }];
+    const before = Number((await db.q("select count(*) n from tray_ledger where type='opening'")).rows[0].n);
+    let r = await call('POST', '/api/admin/trays/customers-bulk', { rows, dryRun: true, zeroOthers: true }, admin);
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    assert.equal(r.body.matched, 1);
+    assert.equal(r.body.matchedTrays, 7);
+    assert.deepEqual(r.body.unmatched, [{ name: 'SOMEONE ELSE', trays: 99 }]);
+    assert(r.body.notInFile.includes('CUST A') && r.body.notInFile.includes('CUST B'));
+    assert(r.body.toZero >= 1, 'customers that hold opening trays would be set to 0');
+    assert.equal(Number((await db.q("select count(*) n from tray_ledger where type='opening'")).rows[0].n), before, 'preview must not write');
+    r = await call('POST', '/api/admin/trays/customers-bulk', { rows }, admin);
+    assert.equal(r.body.changes, 1);
+    const st = (await call('GET', '/api/state', null, admin)).body;
+    const held = st.trays.filter(t => t.cust === 'SLM-003').reduce((a, t) => a + t.qty, 0);
+    assert.equal(held, 7);
+    assert.equal(st.trays.filter(t => t.cust === 'SLM-001').reduce((a, t) => a + t.qty, 0) > 0, true, 'others untouched without zeroOthers');
+    r = await call('POST', '/api/admin/trays/customers-bulk', { rows }, admin);
+    assert.equal(r.body.changes, 0, 'second time nothing changes');
+    assert.equal((await call('POST', '/api/admin/trays/customers-bulk', { rows: [{ name: 'CUST A', outstanding: 1 }, { name: 'cust a', outstanding: 2 }] }, admin)).status, 400);
+    assert.equal((await call('POST', '/api/admin/trays/customers-bulk', { rows: [{ name: 'CUST A', outstanding: -3 }] }, admin)).status, 400);
+    assert.equal((await call('POST', '/api/admin/trays/customers-bulk', { rows }, sidheek)).status, 403);
+  });
   await ok('tray ledger and audit log cannot be changed or deleted', async () => {
     await assert.rejects(db.q('update tray_ledger set qty=0'), /append-only/);
     await assert.rejects(db.q('delete from tray_ledger'), /append-only/);
