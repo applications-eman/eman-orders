@@ -204,23 +204,23 @@ let checks = 0;
   };
 
   const adminSteps = async t => {
-    const { pg, step, click, nav, shot, layout } = t;
+    const { pg, step, click, nav, shot, layout, name: tag } = t;
     await login(t, 'admin@test.local', 'admin-pass-123');
     await step('admin: home', async () => { await shot('home'); await layout('admin home'); });
     await step('admin: customers page has Add customer', async () => { await nav('customers'); await shot('customers'); if (!(await pg.$('[data-act="custnew"]'))) throw new Error('no Add customer button on the Customers page'); });
     await step('admin: add customer from Customers page', async () => {
-      await click('[data-act="custnew"]'); await pg.fill('#cnm', 'UI TEST CUSTOMER'); await pg.fill('#cob', '25'); await shot('add_customer'); await layout('add customer');
+      await click('[data-act="custnew"]'); await pg.fill('#cnm', `UI TEST CUSTOMER ${tag.toUpperCase()}`); await pg.fill('#cob', '25'); await shot('add_customer'); await layout('add customer');
       await click('#cf button[type=submit]'); await pg.waitForFunction(() => /UI TEST CUSTOMER|Customer SLM/.test(document.body.innerText), null, { timeout: 8000 });
     });
     await step('admin: open console', async () => { await nav('admin'); await shot('admin_users'); await layout('admin users'); });
     await step('admin: add user', async () => {
-      await click('[data-act="usernew"]'); await pg.fill('#un', 'Jasil'); await pg.fill('#ue', 'jasil@test.local'); await pg.fill('#uk', 'key-jasil'); await pg.fill('#up', 'jasil-pass-1'); await shot('add_user'); await layout('add user');
+      await click('[data-act="usernew"]'); await pg.fill('#un', `Jasil ${tag}`); await pg.fill('#ue', `jasil-${tag}@test.local`); await pg.fill('#uk', 'key-jasil'); await pg.fill('#up', 'jasil-pass-1'); await shot('add_user'); await layout('add user');
       await click('#uf button[type=submit]'); await pg.waitForFunction(() => /Jasil/.test(document.querySelector('.tbl') ? document.querySelector('.tbl').innerText : ''), null, { timeout: 8000 });
     });
     await step('admin: edit user', async () => { await click('[data-act="useredit"] >> nth=1'); await pg.waitForSelector('#uf'); await click('#uf button[data-act="closemodal"]'); });
     await step('admin: products add, edit', async () => {
       await click('[data-act="tab"][data-id="products"]'); await shot('admin_products'); await layout('admin products');
-      await click('[data-act="prodnew"]'); await pg.fill('#pname', 'UI TEST BREAD'); await pg.fill('#pppi', '5'); await pg.fill('#pdf', '3.25'); await click('#pf button[type=submit]');
+      await click('[data-act="prodnew"]'); await pg.fill('#pname', `UI TEST BREAD ${tag.toUpperCase()}`); await pg.fill('#pppi', '5'); await pg.fill('#pdf', '3.25'); await click('#pf button[type=submit]');
       await pg.waitForFunction(() => /UI TEST BREAD/.test(document.body.innerText), null, { timeout: 8000 });
       await click('[data-act="prodedit"] >> nth=0'); await click('#pf button[data-act="closemodal"]');
     });
