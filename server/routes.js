@@ -473,6 +473,29 @@ router.put('/admin/price', adminOnly, wrap(async (req, res) => {
   res.json({ ok: true });
 }));
 
+// Move trays from one branch to the other. Two new ledger rows (out of one branch, into the other), nothing is edited.
+// A wrong transfer is corrected by moving the trays back.
+router.post('/trays/transfer', need('trays_transfer'), wrap(async (req, res) => {
+  const b = req.body || {};
+  const set = await db.getSettings();
+  if (!set.branches.includes(b.from) || !set.branches.includes(b.to)) throw new Bad('Choose both branches.');
+  if (b.from === b.to) throw new Bad('Choose two different branches.');
+  const n = int(b.qty, 'Number of trays', 1, 100000);
+  const note = String(b.note || '').trim().slice(0, 200);
+  const ref = await db.tx(async run => {
+    await run('select pg_advisory_xact_lock(7001)');
+    const have = await bstock(b.from, run);
+    if (n > have) throw new Bad(`${b.from} has only ${have} trays now. You cannot move ${n}.`);
+    const no = 'TRF-' + pad(await db.nextNo('trf', run), 6);
+    const why = `Moved ${n} from ${b.from} to ${b.to}${note ? ' - ' + note : ''}`;
+    await trayRow(run, null, -n, 'xfer', no, why, b.from, req.user.name);
+    await trayRow(run, null, n, 'xfer', no, why, b.to, req.user.name);
+    await audit(req.user.name, 'Trays moved between branches', 'Tray', no, `${n} trays: ${b.from} → ${b.to}${note ? ' (' + note + ')' : ''}`, run);
+    return no;
+  });
+  res.json({ ok: true, ref });
+}));
+
 // Opening trays: each change becomes a NEW row in the ledger (nothing is edited)
 router.post('/admin/trays/branch', adminOnly, wrap(async (req, res) => {
   const set = await db.getSettings();

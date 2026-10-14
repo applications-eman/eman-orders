@@ -20,7 +20,7 @@ const { createMock } = require('./mock-odoo');
 const base = 'http://127.0.0.1:54703';
 const out = process.env.SHOTS || path.join(__dirname, 'shots');
 fs.mkdirSync(out, { recursive: true });
-const FEAT = ['order_create', 'order_finalize', 'order_cancel', 'order_view', 'payments', 'credit_notes', 'trays_view', 'daily_print', 'customers_view', 'sync_view'];
+const FEAT = ['order_create', 'order_finalize', 'order_cancel', 'order_view', 'payments', 'credit_notes', 'trays_view', 'trays_transfer', 'daily_print', 'customers_view', 'sync_view'];
 
 async function api(method, p, body, cookie) {
   const r = await fetch(base + p, { method, headers: { 'Content-Type': 'application/json', ...(cookie ? { cookie } : {}) }, body: body ? JSON.stringify(body) : undefined });
@@ -184,6 +184,19 @@ let checks = 0;
       await nav('trays'); await shot('trays'); await layout('trays');
       await click('[data-act="traycust"]'); await shot('trays_ledger'); await layout('trays ledger');
       await pg.selectOption('#trayb', 'Hira Branch'); await click('[data-act="tab"][data-id="over"]');
+    });
+    await step('trays: move trays between branches (preview, limit, save)', async () => {
+      await nav('trays'); await click('[data-act="xfer"]'); await pg.waitForSelector('#xq'); await shot('transfer'); await layout('transfer');
+      await pg.fill('#xq', '999999'); if (!(await pg.isDisabled('#xgo'))) throw new Error('more than the branch has was allowed');
+      await pg.fill('#xq', '7'); await pg.fill('#xn', 'truck test');
+      const prev = await pg.innerText('#xprev'); if (!/→/.test(prev)) throw new Error('no before/after preview: ' + prev);
+      await click('[data-act="xfrom"][data-id="Rahmaniyyah Branch"]'); await pg.waitForFunction(() => /only 0|has only/.test(document.querySelector('#xprev').innerText), null, { timeout: 4000 }).catch(() => {});
+      await click('[data-act="xfrom"][data-id="Hira Branch"]');
+      if (await pg.inputValue('#xq') !== '7') throw new Error('typed number was lost');
+      await click('#xgo'); await pg.waitForFunction(() => /TRF-\d+: 7 trays moved/.test(document.body.innerText), null, { timeout: 8000 });
+      await click('[data-act="tab"][data-id="moves"]'); await pg.selectOption('#trayf', ''); await pg.selectOption('#trayb', '');
+      await pg.waitForFunction(() => /Branch transfer/.test(document.body.innerText), null, { timeout: 4000 });
+      await shot('transfer_ledger'); await layout('transfer ledger');
     });
     await step('customers: list, detail, prices, back', async () => {
       await nav('customers'); await shot('customers'); await layout('customers');

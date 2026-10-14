@@ -394,6 +394,35 @@ const login = async (email, password) => (await call('POST', '/api/login', { ema
     assert.equal((await call('POST', '/api/admin/trays/customers-bulk', { rows: [{ name: 'CUST A', outstanding: -3 }] }, admin)).status, 400);
     assert.equal((await call('POST', '/api/admin/trays/customers-bulk', { rows }, sidheek)).status, 403);
   });
+  await ok('trays move between branches: out of one, into the other, checked and logged', async () => {
+    const stockOf = (st, br) => st.trays.filter(r => r.branch === br).reduce((a, r) => a + (r.cust ? -r.qty : r.qty), 0);
+    const total = st => st.trays.filter(r => r.branch && !r.cust).reduce((a, r) => a + r.qty, 0);
+    let st = (await call('GET', '/api/state', null, admin)).body;
+    const H = 'Hira Branch', R = 'Rahmaniyyah Branch';
+    const h0 = stockOf(st, H), r0 = stockOf(st, R), t0 = stockOf(st, H) + stockOf(st, R);
+    assert(h0 >= 5, 'test needs some stock in Hira, has ' + h0);
+    let r = await call('POST', '/api/trays/transfer', { from: H, to: R, qty: 5, note: 'test move' }, admin);
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    assert(/^TRF-\d{6}$/.test(r.body.ref), r.body.ref);
+    st = (await call('GET', '/api/state', null, admin)).body;
+    assert.equal(stockOf(st, H), h0 - 5);
+    assert.equal(stockOf(st, R), r0 + 5);
+    assert.equal(stockOf(st, H) + stockOf(st, R), t0, 'total trays unchanged');
+    assert(st.audit.some(a => a.action === 'Trays moved between branches' && a.ref === r.body.ref));
+    // too many, same branch, unknown branch, bad number, no permission
+    assert.equal((await call('POST', '/api/trays/transfer', { from: R, to: H, qty: r0 + 6 }, admin)).status, 400);
+    assert.equal((await call('POST', '/api/trays/transfer', { from: H, to: H, qty: 1 }, admin)).status, 400);
+    assert.equal((await call('POST', '/api/trays/transfer', { from: H, to: 'Nowhere', qty: 1 }, admin)).status, 400);
+    assert.equal((await call('POST', '/api/trays/transfer', { from: H, to: R, qty: 0 }, admin)).status, 400);
+    assert.equal((await call('POST', '/api/trays/transfer', { from: H, to: R, qty: 1.5 }, admin)).status, 400);
+    assert.equal((await call('POST', '/api/trays/transfer', { from: H, to: R, qty: 1 }, sidheek)).status, 403);
+    // correction = move back
+    r = await call('POST', '/api/trays/transfer', { from: R, to: H, qty: 5, note: 'moved back' }, admin);
+    assert.equal(r.status, 200);
+    st = (await call('GET', '/api/state', null, admin)).body;
+    assert.equal(stockOf(st, H), h0);
+    assert.equal(stockOf(st, R), r0);
+  });
   await ok('tray ledger and audit log cannot be changed or deleted', async () => {
     await assert.rejects(db.q('update tray_ledger set qty=0'), /append-only/);
     await assert.rejects(db.q('delete from tray_ledger'), /append-only/);

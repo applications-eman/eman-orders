@@ -184,7 +184,7 @@ async function init() {
   for (const [k, v] of Object.entries(DEFAULT_SETTINGS)) {
     await q('insert into settings(key,value) values($1,$2) on conflict(key) do nothing', [k, JSON.stringify(v)]);
   }
-  for (const [n, v] of [['ord', 1], ['pay', 1], ['cn', 1], ['split', 1]]) {
+  for (const [n, v] of [['ord', 1], ['pay', 1], ['cn', 1], ['split', 1], ['trf', 1]]) {
     await q('insert into counters(name,val) values($1,$2) on conflict(name) do nothing', [n, v]);
   }
 }

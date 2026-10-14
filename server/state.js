@@ -1,7 +1,7 @@
 // Builds the snapshot the browser shows. Money: orders in cents, payments/credits in SAR, same as the screens expect.
 const db = require('./db');
 
-const FEATURES = ['order_create', 'order_finalize', 'order_cancel', 'order_view', 'payments', 'credit_notes', 'trays_view', 'daily_print', 'customers_view', 'sync_view'];
+const FEATURES = ['order_create', 'order_finalize', 'order_cancel', 'order_view', 'payments', 'credit_notes', 'trays_view', 'trays_transfer', 'daily_print', 'customers_view', 'sync_view'];
 
 const state = s => (s === 'queued' || s === 'posted' || s === 'failed' ? s : 'queued');
 

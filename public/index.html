@@ -406,6 +406,7 @@ const FEATURES=[
  ['payments','Receive payments','Posts the payment to Odoo'],
  ['credit_notes','Issue credit notes and discounts','Posts a credit note to Odoo'],
  ['trays_view','View tray ledger','Balances and movements'],
+ ['trays_transfer','Move trays between branches','Takes trays out of one branch and adds them to the other'],
  ['daily_print','Print the combined day statement','Per customer, for any date'],
  ['customers_view','View customers and prices','Read only'],
  ['sync_view','View Odoo sync queue','Retry failed postings']
@@ -776,11 +777,11 @@ function vTrays(){
     <div class="tbl"><table><thead><tr><th>Customer</th><th class="r">Trays held</th><th>Last movement</th><th></th></tr></thead><tbody>${rows.map(([c,n])=>{const l=S.trays.find(x=>x.cust===c.code);return `<tr><td><b>${esc(c.name)}</b><br><small class="muted">${c.code}</small></td><td class="r num"><b>${n}</b></td><td>${l?fmtDT(l.t)+' · '+esc(l.ref):'—'}</td><td class="r"><button class="btn sm" data-act="traycust" data-id="${c.code}">Ledger</button></td></tr>`}).join('')}</tbody></table></div>`;
   } else {
     const cc=UI.sel.trayCust,br=UI.sel.trayBr||'';const rows=S.trays.filter(r=>(!cc||r.cust===cc)&&(!br||r.branch===br)).slice(0,300);
-    const TL={in:'Brought in',out:'Taken out',opening:'Opening',bopen:'Branch opening',adjust:'Order change'};
+    const TL={in:'Brought in',out:'Taken out',opening:'Opening',bopen:'Branch opening',adjust:'Order change',xfer:'Branch transfer'};
     b=`<div class="row" style="margin-bottom:12px"><select class="inp" style="max-width:260px" id="trayf" aria-label="Filter by customer"><option value="">All customers</option>${S.customers.map(c=>`<option value="${c.code}" ${cc===c.code?'selected':''}>${esc(c.name)}</option>`).join('')}</select><select class="inp" style="max-width:220px" id="trayb" aria-label="Filter by branch"><option value="">Both branches</option>${S.set.branches.map(x=>`<option ${br===x?'selected':''}>${esc(x)}</option>`).join('')}</select>${cc?`<span class="pill brand">Holds ${held(cc)} trays</span>`:''}${br?`<span class="pill brand">${nf0.format(bstock(br))} in stock</span>`:''}</div><p class="muted" style="margin:0 0 12px">Trays move only when an order is created, edited, cancelled or finalized. Rows are never edited or deleted.</p>
     <div class="tbl"><table><thead><tr><th>When</th><th>Branch</th><th>Customer</th><th>Type</th><th>Reference</th><th class="r">Customer holds</th><th class="r">Branch stock</th><th>By</th><th>Note</th></tr></thead><tbody>${rows.map(r=>`<tr><td>${fmtDT(r.t)}</td><td>${esc(r.branch||'—')}</td><td>${r.cust?esc(cust(r.cust).name):'—'}</td><td><span class="pill ${r.type==='in'?'good':r.type==='out'?'warn':'info'}">${TL[r.type]||r.type}</span></td><td>${esc(r.ref)}</td><td class="r num">${r.cust?`<b style="color:${r.qty<0?'var(--good)':'var(--ink)'}">${r.qty>0?'+':''}${r.qty}</b>`:''}</td><td class="r num">${r.branch?`<b>${(r.cust?-r.qty:r.qty)>0?'+':''}${r.cust?-r.qty:r.qty}</b>`:''}</td><td>${esc(r.by)}</td><td class="muted">${esc(r.reason)}</td></tr>`).join('')}</tbody></table></div>`;
   }
-  return `<div class="tabs">${tabs.map(x=>`<button class="tab ${t===x[0]?'on':''}" data-act="tab" data-grp="trays" data-id="${x[0]}">${x[1]}</button>`).join('')}</div>${b}`;
+  return `${can('trays_transfer')?`<div class="row" style="justify-content:flex-end;margin-bottom:12px"><button class="btn pri" data-act="xfer">${ic('sync',18)} Move trays between branches</button></div>`:''}<div class="tabs">${tabs.map(x=>`<button class="tab ${t===x[0]?'on':''}" data-act="tab" data-grp="trays" data-id="${x[0]}">${x[1]}</button>`).join('')}</div>${b}`;
 }
 
 /* ---- customers ---- */
@@ -979,6 +980,16 @@ function vModal(){
   if(m.type==='cust'){
     return wrap(`<h2>Add customer</h2><form class="stack" id="cf"><div class="field"><label for="cnm">Name (same as the Odoo customer)</label><input class="inp" id="cnm" autocomplete="off"></div><div class="field"><label for="cob">Opening balance owed (SAR)</label><input class="inp" id="cob" inputmode="decimal" value="0"></div><div class="muted" id="cerr" style="color:var(--bad);font-weight:700"></div><div class="row"><button type="button" class="btn" data-act="closemodal">Cancel</button><button class="btn pri" type="submit" style="flex:1">Add customer</button></div></form>`);
   }
+  if(m.type==='xfer'){
+    const br=S.set.branches;const from=m.from||br[0];const to=br.find(x=>x!==from)||br[0];
+    const q=parseInt(m.qty,10)||0;
+    return wrap(`<h2>Move trays between branches</h2>
+    <div class="field"><label>Take the trays out of</label><div class="row">${br.map(x=>`<button type="button" class="chip ${from===x?'on':''}" data-act="xfrom" data-id="${esc(x)}">${esc(x)}</button>`).join('')}</div><small class="muted">They are added to ${esc(to)}.</small></div>
+    <div class="field" style="margin-top:12px"><label for="xq">How many trays?</label><input class="inp num" id="xq" inputmode="numeric" value="${esc(m.qty||'')}" placeholder="0" autocomplete="off"></div>
+    <div class="field" style="margin-top:12px"><label for="xn">Note (optional)</label><input class="inp" id="xn" autocomplete="off" placeholder="For example: truck or driver"></div>
+    <div class="pstat ${q>0&&q<=bstock(from)?'ok':'bad'}" id="xprev" style="margin-top:12px">${xferPrev(from,to,q)}</div>
+    <div class="row" style="margin-top:12px"><button class="btn" data-act="closemodal">Cancel</button><button class="btn pri" style="flex:1" id="xgo" data-act="doxfer" ${q>0&&q<=bstock(from)?'':'disabled'}>${ic('check',18)} Move trays</button></div>`);
+  }
   if(m.type==='cart'){
     return `<div class="mask sheet" data-act="closemodal" data-bg="1"><div class="modal" role="dialog" aria-modal="true"><div class="cart" style="max-height:none;position:static">${cartHtml(UI.draft)}</div></div></div>`;
   }
@@ -987,6 +998,12 @@ function vModal(){
     return `<div class="mask sheet" data-act="closemodal" data-bg="1"><div class="modal" role="dialog" aria-modal="true"><h2>More</h2><div class="list">${navs.map(n=>`<button class="li" data-act="nav" data-id="${n[0]}">${ic(n[2],22)}<div class="grow"><b>${n[1]}</b></div>${ic('chev',18)}</button>`).join('')}<div class="li" style="align-items:flex-start">${ic('home',22)}<div class="grow"><b>Install on this phone</b><small style="white-space:normal">iPhone: Share, then Add to Home Screen. Android: menu, then Install app. It opens full screen like a native app.</small></div></div></div></div></div>`;
   }
   return '';
+}
+function xferPrev(from,to,q){
+  const hf=bstock(from),ht=bstock(to);
+  if(!(q>0))return `${from} has ${nf0.format(hf)} trays. ${to} has ${nf0.format(ht)}. Enter how many to move.`;
+  if(q>hf)return `${from} has only ${nf0.format(hf)} trays. You cannot move ${nf0.format(q)}.`;
+  return `${from}: ${nf0.format(hf)} → ${nf0.format(hf-q)}   ·   ${to}: ${nf0.format(ht)} → ${nf0.format(ht+q)}`;
 }
 function popHtml(){
   const p=pending();
@@ -1215,6 +1232,10 @@ document.addEventListener('click',e=>{
    case 'prodnew':UI.modal={type:'prod',id:null};render();break;
    case 'prodedit':UI.modal={type:'prod',id};render();break;
    case 'custnew':UI.modal={type:'cust'};render();break;
+   case 'xfer':UI.modal={type:'xfer',from:S.set.branches[0],qty:''};render();break;
+   case 'xfrom':UI.modal.from=id;render();break;
+   case 'doxfer':{const m=UI.modal;const from=m.from||S.set.branches[0];const to=S.set.branches.find(x=>x!==from);const q=parseInt(m.qty,10)||0;const note=($('#xn')||{}).value||'';
+     act(async()=>{const r=await api('POST','/api/trays/transfer',{from,to,qty:q,note});UI.modal=null;return r},r=>r.ref+': '+nf0.format(q)+' trays moved from '+from+' to '+to);break}
    case 'otcancel':UI.sel.otPrev=null;UI.sel.otRows=null;render();break;
    case 'otapply':act(async()=>{const r=await api('POST','/api/admin/trays/customers-bulk',{rows:UI.sel.otRows,zeroOthers:UI.sel.otZero!==false});UI.sel.otPrev=null;UI.sel.otRows=null;return r},r=>'Opening trays saved. '+r.changes+' customer'+(r.changes===1?'':'s')+' changed.');break;
    case 'checkkey':act(()=>api('POST','/api/admin/users/'+id+'/check-key'),r=>r.ok?'Key works with Odoo'+(r.note?'. '+r.note:''):'Key failed: '+r.note);break;
@@ -1285,6 +1306,8 @@ async function saveProd(){
 }
 document.addEventListener('input',e=>{
   const t=e.target;
+  if(t.id==='xq'&&UI.modal&&UI.modal.type==='xfer'){const m=UI.modal;m.qty=t.value;const from=m.from||S.set.branches[0];const to=S.set.branches.find(x=>x!==from);const q=parseInt(t.value,10)||0;
+    const pv=$('#xprev');if(pv){pv.textContent=xferPrev(from,to,q);pv.className='pstat '+(q>0&&q<=bstock(from)?'ok':'bad')}const go=$('#xgo');if(go)go.disabled=!(q>0&&q<=bstock(from));return}
   if(t.id==='pa'){payState().total=t.value;updPay();return}
   if(t.id==='pd'){payState().date=t.value;return}
   if(t.id==='pn'){payState().note=t.value;return}
