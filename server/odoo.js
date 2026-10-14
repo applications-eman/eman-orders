@@ -304,9 +304,56 @@ async function ping(ctx) {
   return (rows || []).map(r => r.name);
 }
 
+
+// ---- read-only checks for the administrator (nothing is created in Odoo) ----
+// Does this key work, and is it the expected company? Is there an Odoo user with the login email?
+async function verifyKey(ctx, loginEmail) {
+  const rows = await rpc(ctx, 'res.company', 'search_read', { domain: [], fields: ['name'] });
+  const companies = (rows || []).map(r => r.name);
+  const companyOk = !EXPECT_COMPANY || companies.includes(EXPECT_COMPANY);
+  let odooUser = null; // null = could not look, '' = no such login in Odoo
+  if (loginEmail) {
+    try {
+      const u = await rpc(ctx, 'res.users', 'search_read', { domain: [['login', '=ilike', loginEmail]], fields: ['name', 'login'], limit: 1 });
+      odooUser = u && u[0] ? String(u[0].name || u[0].login) : '';
+    } catch (e) { odooUser = null; }
+  }
+  return { companies, companyOk, odooUser };
+}
+
+// Everything the app needs to find in Odoo before the first real order
+async function readiness(ctx, codes, names) {
+  const checks = [];
+  const add = (name, ok, detail) => checks.push({ name, ok: !!ok, detail: detail || '' });
+  const cs = await rpc(ctx, 'res.company', 'search_read', { domain: [], fields: ['name'] });
+  const companies = (cs || []).map(r => r.name);
+  add('Odoo company', !EXPECT_COMPANY || companies.includes(EXPECT_COMPANY), `Odoo says: ${companies.join(', ') || '(none)'}. Expected: ${EXPECT_COMPANY || '(not set)'}`);
+  const jcodes = ['INV', ...Object.values(JOURNAL_CODE)];
+  const js = await rpc(ctx, 'account.journal', 'search_read', { domain: [['code', 'in', jcodes]], fields: ['code'] });
+  const haveJ = new Set((js || []).map(j => j.code));
+  const missJ = jcodes.filter(c => !haveJ.has(c));
+  add('Journals (sales and the 6 payment methods)', !missJ.length, missJ.length ? 'Not found in Odoo: ' + missJ.join(', ') : jcodes.join(', '));
+  const ac = await rpc(ctx, 'account.account', 'search_read', { domain: [['code', '=', '500100']], fields: ['code'], limit: 1 });
+  add('Account 500100 (Sales Account)', ac && ac.length, ac && ac.length ? '' : 'Not found in Odoo');
+  const ro = await rpc(ctx, 'account.cash.rounding', 'search_read', { domain: [['name', '=', ROUNDING_NAME]], fields: ['name'], limit: 1 });
+  add(`Cash rounding "${ROUNDING_NAME}"`, ro && ro.length, ro && ro.length ? '' : 'Not found in Odoo');
+  const ps = await rpc(ctx, 'product.product', 'search_read', { domain: [['default_code', 'in', codes]], fields: ['default_code'], limit: 5000 });
+  const haveP = new Set((ps || []).map(r => r.default_code));
+  const missP = codes.filter(c => !haveP.has(c));
+  add(`Products found in Odoo by code: ${codes.length - missP.length} of ${codes.length}`, !missP.length, missP.length ? 'Missing in Odoo: ' + missP.join(', ') : '');
+  const pr = await rpc(ctx, 'res.partner', 'search_read', { domain: [['name', 'in', names], ['customer_rank', '>', 0]], fields: ['name'], limit: 5000 });
+  const count = {};
+  (pr || []).forEach(r => { count[r.name] = (count[r.name] || 0) + 1; });
+  const missC = names.filter(n => !count[n]);
+  const dupC = names.filter(n => count[n] > 1);
+  add(`Customers found in Odoo by exact name: ${names.length - missC.length} of ${names.length}`, !missC.length && !dupC.length,
+    [missC.length ? 'Missing in Odoo: ' + missC.join(', ') : '', dupC.length ? 'Name used twice in Odoo: ' + dupC.join(', ') : ''].filter(Boolean).join('. '));
+  return { companies, checks };
+}
+
 const _resetCache = () => { cache.journals = {}; cache.account = null; cache.rounding = null; cache.products = {}; cache.companyOk = false; };
 
 module.exports = {
   _resetCache, OdooError, configured, ryDate, getUserKey, JOURNAL_CODE, ODOO_URL, ODOO_DB, EXPECT_COMPANY,
-  postInvoice, postPayment, postCredit, reversePayment, receivableBalances, lastRefs, ping, rpc
+  postInvoice, postPayment, postCredit, reversePayment, receivableBalances, lastRefs, ping, rpc, verifyKey, readiness
 };

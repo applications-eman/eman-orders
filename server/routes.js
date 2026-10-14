@@ -337,6 +337,23 @@ router.put('/admin/offline', adminOnly, wrap(async (req, res) => {
 
 const FEAT = f => (Array.isArray(f) ? f.filter(x => FEATURES.includes(x)) : []);
 
+// Asks Odoo with this user's own key. The result is saved so the screen can show it. Nothing is created in Odoo.
+async function runKeyCheck(id) {
+  const u = (await db.q('select id,name,email from users where id=$1', [id])).rows[0];
+  let chk;
+  try {
+    const ctx = await odoo.getUserKey(id);
+    const v = await odoo.verifyKey(ctx, u.email);
+    chk = {
+      ok: v.companyOk, t: Date.now(), companies: v.companies, odooUser: v.odooUser,
+      note: !v.companyOk ? `This key opens "${v.companies.join(', ')}", expected "${odoo.EXPECT_COMPANY}".`
+        : v.odooUser === '' ? `Odoo has no user with the login ${u.email}.` : ''
+    };
+  } catch (e) { chk = { ok: false, t: Date.now(), companies: [], odooUser: null, note: e.message }; }
+  await db.q('update users set key_check=$2 where id=$1', [id, JSON.stringify(chk)]);
+  return chk;
+}
+
 router.post('/admin/users', adminOnly, wrap(async (req, res) => {
   const b = req.body || {};
   const name = String(b.name || '').trim(), email = String(b.email || '').trim().toLowerCase();
@@ -346,10 +363,11 @@ router.post('/admin/users', adminOnly, wrap(async (req, res) => {
   if (!b.key) throw new Bad('Paste the Odoo API key for this user.');
   const ex = await db.q('select 1 from users where lower(email)=$1', [email]);
   if (ex.rows.length) throw new Bad('This email is already a user.');
-  await db.q('insert into users(name,email,pw_hash,admin,active,feat,odoo_key_enc) values($1,$2,$3,$4,$5,$6,$7)',
+  const ins = await db.q('insert into users(name,email,pw_hash,admin,active,feat,odoo_key_enc) values($1,$2,$3,$4,$5,$6,$7) returning id',
     [name, email, hashPassword(String(b.password)), !!b.admin, b.active !== false, FEAT(b.feat), encrypt(String(b.key).trim())]);
   await audit(req.user.name, 'User added', 'User', name, email);
-  res.json({ ok: true });
+  const chk = await runKeyCheck(ins.rows[0].id);
+  res.json({ ok: true, keyCheck: chk });
 }));
 
 router.put('/admin/users/:id', adminOnly, wrap(async (req, res) => {
@@ -376,9 +394,10 @@ router.put('/admin/users/:id', adminOnly, wrap(async (req, res) => {
   if (b.password && String(b.password).length < 8) throw new Bad('Password needs at least 8 characters.');
   await db.q('update users set name=$2,email=$3,admin=$4,active=$5,feat=$6 where id=$1', [id, name, email, admin, active, feat]);
   if (b.password) await db.q('update users set pw_hash=$2 where id=$1', [id, hashPassword(String(b.password))]);
-  if (b.key) await db.q('update users set odoo_key_enc=$2 where id=$1', [id, encrypt(String(b.key).trim())]);
+  if (b.key) await db.q('update users set odoo_key_enc=$2, key_check=null where id=$1', [id, encrypt(String(b.key).trim())]);
   await audit(req.user.name, 'User edited', 'User', name, ch.join(', ') || 'no change');
-  res.json({ ok: true });
+  const chk = b.key || u.email !== email ? await runKeyCheck(id) : null;
+  res.json({ ok: true, keyCheck: chk });
 }));
 
 router.post('/admin/products', adminOnly, wrap(async (req, res) => {
@@ -521,10 +540,69 @@ async function adminCtx(req) {
   return { name: u.name, key: u.key };
 }
 
+router.post('/admin/users/:id/check-key', adminOnly, wrap(async (req, res) => {
+  const id = int(req.params.id, 'User', 1, 1e9);
+  const u = (await db.q('select name, odoo_key_enc from users where id=$1', [id])).rows[0];
+  if (!u) throw new Bad('User not found.', 404);
+  if (!u.odoo_key_enc) throw new Bad('No Odoo key is saved for ' + u.name + '.');
+  const chk = await runKeyCheck(id);
+  await audit(req.user.name, 'Odoo key checked', 'User', u.name, chk.ok ? 'works' : 'failed: ' + chk.note);
+  res.json(chk);
+}));
+
 router.post('/admin/odoo/test', adminOnly, wrap(async (req, res) => {
   const ctx = await adminCtx(req);
   const names = await odoo.ping(ctx);
-  res.json({ companies: names, expected: odoo.EXPECT_COMPANY || null, ok: !odoo.EXPECT_COMPANY || names.includes(odoo.EXPECT_COMPANY) });
+  const out = { companies: names, expected: odoo.EXPECT_COMPANY || null, ok: !odoo.EXPECT_COMPANY || names.includes(odoo.EXPECT_COMPANY) };
+  await db.setSetting('odooTest', { ...out, t: Date.now(), by: req.user.name });
+  res.json(out);
+}));
+
+// Read-only: is everything the app needs there in Odoo? (company, journals, account, rounding, products, customers)
+router.post('/admin/odoo/readiness', adminOnly, wrap(async (req, res) => {
+  const ctx = await adminCtx(req);
+  const codes = (await db.q('select code from products where active order by code')).rows.map(r => r.code);
+  const names = (await db.q('select name from customers where active order by name')).rows.map(r => r.name);
+  const r = await odoo.readiness(ctx, codes, names);
+  const out = { t: Date.now(), by: req.user.name, ok: r.checks.every(c => c.ok), failed: r.checks.filter(c => !c.ok).length, checks: r.checks };
+  await db.setSetting('odooCheck', out);
+  await audit(req.user.name, 'Odoo readiness checked', 'Odoo', '', out.ok ? 'all passed' : out.failed + ' problem(s)');
+  res.json(out);
+}));
+
+// Read-only: per customer, the balance in this app against the receivable balance in Odoo.
+// The app side counts only documents Odoo already has (posted); waiting or refused ones are listed separately.
+router.post('/admin/odoo/reconcile', adminOnly, wrap(async (req, res) => {
+  const ctx = await adminCtx(req);
+  const odooRows = await odoo.receivableBalances(ctx);
+  const cu = (await db.q('select code,name,opening_cents,odoo_partner_id from customers order by name')).rows;
+  const sums = async sql => { const m = {}; (await db.q(sql)).rows.forEach(r => { m[r.cust] = { posted: Number(r.posted), waiting: Number(r.waiting) }; }); return m; };
+  const inv = await sums("select cust, coalesce(sum(total_cents) filter (where odoo_state='posted'),0) posted, count(*) filter (where odoo_state is distinct from 'posted') waiting from orders where status='final' group by cust");
+  const pay = await sums("select cust, coalesce(sum(amount_cents) filter (where odoo_state='posted'),0) posted, count(*) filter (where odoo_state is distinct from 'posted') waiting from payments where not reversed group by cust");
+  const crd = await sums("select cust, coalesce(sum(amount_cents) filter (where odoo_state='posted'),0) posted, count(*) filter (where odoo_state is distinct from 'posted') waiting from credits group by cust");
+  const byId = new Map(odooRows.map(r => [r.id, r]));
+  const byName = new Map(odooRows.map(r => [String(r.name).trim().toLowerCase(), r]));
+  const seen = new Set();
+  const rows = [];
+  let same = 0;
+  for (const c of cu) {
+    const o = (c.odoo_partner_id && byId.get(c.odoo_partner_id)) || byName.get(c.name.trim().toLowerCase());
+    if (o) seen.add(o.id);
+    const get = (m, k) => (m[c.code] || { posted: 0, waiting: 0 })[k];
+    const app = Number(c.opening_cents) + get(inv, 'posted') - get(pay, 'posted') - get(crd, 'posted');
+    const odooC = o ? Math.round(o.balance * 100) : 0;
+    const waiting = get(inv, 'waiting') + get(pay, 'waiting') + get(crd, 'waiting');
+    if (app === odooC) { same++; continue; }
+    rows.push({ code: c.code, name: c.name, app: app / 100, odoo: odooC / 100, diff: (odooC - app) / 100, waiting, inOdoo: !!o });
+  }
+  const odooOnly = odooRows.filter(r => !seen.has(r.id) && Math.abs(r.balance) > 0.004).map(r => ({ name: r.name, balance: r.balance }));
+  const out = {
+    t: Date.now(), by: req.user.name, checked: cu.length, same, differences: rows.length, ok: rows.length === 0 && odooOnly.length === 0,
+    rows: rows.slice(0, 200), odooOnly: odooOnly.slice(0, 100)
+  };
+  await db.setSetting('reconcile', out);
+  await audit(req.user.name, 'Balances compared with Odoo', 'Odoo', '', `${same} of ${cu.length} customers match, ${rows.length} differ`);
+  res.json(out);
 }));
 
 // Starting balances = what Odoo shows each customer owes right now. Only before the app has its own records.

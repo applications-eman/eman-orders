@@ -62,7 +62,7 @@ let checks = 0;
     pg.on('dialog', d => d.accept());
     const step = async (label, fn) => {
       checks++;
-      try { await fn(); } catch (e) { problems.push(`[${name}] ${label}: ${String(e.message).split('\n').slice(0, process.env.VERBOSE ? 12 : 1).join(' | ')}`); }
+      try { await fn(); } catch (e) { await pg.screenshot({ path: `${out}/FAIL_${name}_${label.replace(/[^a-z0-9]+/gi, '_')}.png` }).catch(() => {}); problems.push(`[${name}] ${label}: ${String(e.message).split('\n').slice(0, process.env.VERBOSE ? 12 : 1).join(' | ')}`); }
     };
     const click = (sel, o = {}) => pg.click(sel, { timeout: 4000, ...o });
     const nav = async id => {
@@ -214,8 +214,16 @@ let checks = 0;
     });
     await step('admin: open console', async () => { await nav('admin'); await shot('admin_users'); await layout('admin users'); });
     await step('admin: add user', async () => {
-      await click('[data-act="usernew"]'); await pg.fill('#un', `Jasil ${tag}`); await pg.fill('#ue', `jasil-${tag}@test.local`); await pg.fill('#uk', 'key-jasil'); await pg.fill('#up', 'jasil-pass-1'); await shot('add_user'); await layout('add user');
+      await click('[data-act="usernew"]'); await pg.fill('#un', `Jasil ${tag}`); await pg.fill('#ue', `jasil-${tag}@test.local`); await pg.fill('#uk', 'key-sidheek'); await pg.fill('#up', 'jasil-pass-1'); await shot('add_user'); await layout('add user');
       await click('#uf button[type=submit]'); await pg.waitForFunction(() => /Jasil/.test(document.querySelector('.tbl') ? document.querySelector('.tbl').innerText : ''), null, { timeout: 8000 });
+    });
+    await step('admin: key status is real and Check key asks Odoo', async () => {
+      await click('[data-act="checkkey"] >> nth=0');
+      await pg.waitForFunction(() => /Key works with Odoo|Key failed/.test(document.body.innerText));
+      const t = await pg.innerText('.tbl');
+      if (!/Works|Failed/.test(t)) throw new Error('no real key status shown');
+      if (/Saved, not checked yet/.test(t)) throw new Error('a saved key was never checked');
+      await shot('admin_users_keys'); await layout('admin users keys');
     });
     await step('admin: edit user', async () => { await click('[data-act="useredit"] >> nth=1'); await pg.waitForSelector('#uf'); await click('#uf button[data-act="closemodal"]'); });
     await step('admin: products add, edit', async () => {
@@ -236,6 +244,13 @@ let checks = 0;
     await step('admin: data and Odoo', async () => {
       await click('[data-act="tab"][data-id="data"]'); await shot('admin_data'); await layout('admin data');
       await click('[data-act="odootest"]'); await pg.waitForFunction(() => /Connected/.test(document.body.innerText), null, { timeout: 10000 });
+    });
+    await step('admin: readiness and balance checks run against Odoo and show real results', async () => {
+      await click('[data-act="readiness"]');
+      await pg.waitForFunction(() => /All checks passed|problems? found/.test(document.body.innerText), null, { timeout: 15000 });
+      await click('[data-act="reconcile"]');
+      await pg.waitForFunction(() => /of \d+ customers match/.test(document.body.innerText), null, { timeout: 15000 });
+      await shot('admin_checks'); await layout('admin checks');
     });
     await step('admin: audit log', async () => { await click('[data-act="tab"][data-id="audit"]'); await pg.selectOption('#auser', { index: 1 }); await shot('admin_audit'); await layout('admin audit'); });
     await step('admin: settings', async () => {

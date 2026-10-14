@@ -24,8 +24,12 @@ function createMock() {
     const key = model + '/' + method;
     if (key === 'res.company/search_read') return [{ id: 1, name: st.company }];
     if (key === 'account.journal/search_read') {
-      const code = b.domain[0][2];
-      return st.journals[code] ? [{ id: st.journals[code], code }] : [];
+      const codes = [].concat(b.domain[0][2]);
+      return codes.filter(c => st.journals[c]).map(c => ({ id: st.journals[c], code: c }));
+    }
+    if (key === 'res.users/search_read') {
+      const login = String(b.domain[0][2]).toLowerCase();
+      return (st.odooUsers || []).filter(u => u.login.toLowerCase() === login);
     }
     if (key === 'account.account/search_read') return [{ id: 270, code: '500100' }];
     if (key === 'account.cash.rounding/search_read') return [{ id: 1, name: 'Round to 1 SAR (0.50 up)' }];
@@ -34,8 +38,8 @@ function createMock() {
       return st.products.filter(p => codes.includes(p.default_code));
     }
     if (key === 'res.partner/search_read') {
-      const name = b.domain[0][2];
-      return st.partners.filter(p => p.name === name);
+      const names = [].concat(b.domain[0][2]);
+      return st.partners.filter(p => names.includes(p.name));
     }
     if (key === 'account.move/search_read') {
       const d = Object.fromEntries(b.domain.filter(x => x[1] === '=').map(x => [x[0], x[2]]));

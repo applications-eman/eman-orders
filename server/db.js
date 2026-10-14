@@ -41,6 +41,7 @@ create table if not exists users(
   odoo_key_enc text,
   created_at timestamptz not null default now()
 );
+alter table users add column if not exists key_check jsonb;
 create table if not exists products(
   code text primary key,
   name text not null,

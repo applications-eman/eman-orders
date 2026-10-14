@@ -83,6 +83,36 @@ const login = async (email, password) => (await call('POST', '/api/login', { ema
     assert(!JSON.stringify(st).includes('key-sidheek'));
     assert(!JSON.stringify(st).includes('pw_hash'));
   });
+  await ok('a saved key is really asked against Odoo; the result is kept and only the admin sees it', async () => {
+    M.odooUsers = [{ id: 7, login: 'sidheek@test.local', name: 'Sidheek (Odoo)' }];
+    const uid = (await call('GET', '/api/state', null, admin)).body.users.find(u => u.name === 'Sidheek').id;
+    let r = await call('POST', `/api/admin/users/${uid}/check-key`, {}, admin);
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    assert.equal(r.body.ok, true);
+    assert.equal(r.body.odooUser, 'Sidheek (Odoo)');
+    let st = (await call('GET', '/api/state', null, admin)).body;
+    assert.equal(st.users.find(u => u.name === 'Sidheek').keyCheck.ok, true);
+    st = (await call('GET', '/api/state', null, sidheek)).body;
+    assert(st.users.every(u => u.keyCheck == null), 'staff must not see key checks');
+    M.company = 'Some Other Company';
+    r = await call('POST', `/api/admin/users/${uid}/check-key`, {}, admin);
+    M.company = 'Eman Bakery Demo';
+    assert.equal(r.body.ok, false);
+    assert(/expected/.test(r.body.note), r.body.note);
+    M.odooUsers = [];
+    r = await call('POST', `/api/admin/users/${uid}/check-key`, {}, admin);
+    assert.equal(r.body.ok, true);
+    assert(/no user with the login/.test(r.body.note), r.body.note);
+    M.odooUsers = [{ id: 7, login: 'sidheek@test.local', name: 'Sidheek (Odoo)' }];
+  });
+  await ok('a wrong key is reported as failed when the user is saved', async () => {
+    const r = await call('POST', '/api/admin/users', { name: 'Wrong Key', email: 'wrong@test.local', password: 'wrong-pass-1', key: 'key-not-valid', feat: ['order_view'] }, admin);
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    assert.equal(r.body.keyCheck.ok, false);
+    assert(/Invalid apikey/.test(r.body.keyCheck.note), r.body.keyCheck.note);
+    const st = (await call('GET', '/api/state', null, admin)).body;
+    assert.equal(st.users.find(u => u.name === 'Wrong Key').keyCheck.ok, false);
+  });
   await ok('admin user needs its own key for Odoo tools', async () => {
     const r = await call('POST', '/api/admin/odoo/test', {}, admin);
     assert.equal(r.status, 400);
@@ -104,6 +134,24 @@ const login = async (email, password) => (await call('POST', '/api/login', { ema
     assert.equal(r.body.matched, 1);
     const st = (await call('GET', '/api/state', null, admin)).body;
     assert.equal(st.customers.find(c => c.code === 'SLM-001').open, 150);
+  });
+  await ok('readiness check finds what is missing in Odoo (read only)', async () => {
+    let r = await call('POST', '/api/admin/odoo/readiness', {}, admin);
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    assert.equal(r.body.ok, true, JSON.stringify(r.body.checks.filter(c => !c.ok)));
+    const saved = M.products.splice(2, 1);
+    delete M.journals.SHK;
+    M.partners.push({ id: 599, name: 'CUST A' });
+    r = await call('POST', '/api/admin/odoo/readiness', {}, admin);
+    M.products.push(...saved); M.journals.SHK = 25; M.partners.pop();
+    assert.equal(r.body.ok, false);
+    const bad = r.body.checks.filter(c => !c.ok).map(c => c.detail).join(' | ');
+    assert(/PRD-003/.test(bad), bad);
+    assert(/SHK/.test(bad), bad);
+    assert(/CUST A/.test(bad), bad);
+    const st = (await call('GET', '/api/state', null, admin)).body;
+    assert.equal(st.set.odooCheck.ok, false, 'last result is kept');
+    assert.equal(st.users.length > 0 && (await call('GET', '/api/state', null, sidheek)).body.set.odooCheck, null, 'staff do not see it');
   });
   await ok('numbers continue after the last ones in Odoo', async () => {
     M.moves.push({ id: 1, move_type: 'out_invoice', ref: 'ORD-016743', state: 'posted' });
@@ -343,6 +391,28 @@ const login = async (email, password) => (await call('POST', '/api/login', { ema
     const lg = await db.q("select count(*) n from sync_log where request::text like '%key-%' or response::text like '%key-%'");
     assert.equal(Number(lg.rows[0].n), 0);
     assert((await db.q('select count(*) n from sync_log')).rows[0].n > 10, 'calls are logged');
+  });
+
+  await ok('balances are compared with Odoo per customer; planted differences are found', async () => {
+    let r = await call('POST', '/api/admin/odoo/reconcile', {}, admin);
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    assert.equal(r.body.checked, 3);
+    // CUST A went through opening balance, invoice, payment and credit note: app and Odoo agree
+    assert(!r.body.rows.some(x => x.code === 'SLM-001'), 'CUST A should match');
+    assert(r.body.same >= 1);
+    // plant a difference on CUST C and an Odoo-only customer
+    M.lines.push({ id: 9001, partner_id: 503, date: '2026-10-12', amount_residual: 25, parent_state: 'posted', reconciled: false });
+    M.partners.push({ id: 598, name: 'GHOST ONLY IN ODOO' });
+    M.lines.push({ id: 9002, partner_id: 598, date: '2026-10-12', amount_residual: 12, parent_state: 'posted', reconciled: false });
+    r = await call('POST', '/api/admin/odoo/reconcile', {}, admin);
+    M.lines = M.lines.filter(l => l.id !== 9001 && l.id !== 9002);
+    M.partners = M.partners.filter(p => p.id !== 598);
+    const c = r.body.rows.find(x => x.code === 'SLM-003');
+    assert(c && c.diff === 25 && c.odoo === c.app + 25, JSON.stringify(c));
+    assert(r.body.odooOnly.some(x => x.name === 'GHOST ONLY IN ODOO' && x.balance === 12));
+    assert.equal(r.body.ok, false);
+    const st = (await call('GET', '/api/state', null, admin)).body;
+    assert.equal(st.set.reconcile.differences, r.body.differences, 'last result is kept');
   });
 
   console.log(`\n${pass} checks passed${process.exitCode ? ', SOME FAILED' : ''}`);

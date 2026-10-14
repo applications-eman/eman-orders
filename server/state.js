@@ -63,7 +63,7 @@ async function buildState(user) {
     db.q('select * from credits order by t desc, id desc'),
     db.q('select id,t,cust,branch,qty,type,ref,by_name,reason from tray_ledger order by id desc'),
     db.q('select id,t,user_name,action,entity,ref,detail from audit order by id desc limit $1', [admin ? 800 : 12]),
-    db.q('select id,name,email,admin,active,feat,(odoo_key_enc is not null) has_key from users order by id'),
+    db.q('select id,name,email,admin,active,feat,key_check,(odoo_key_enc is not null) has_key from users order by id'),
     customerLedger()
   ]);
 
@@ -76,7 +76,7 @@ async function buildState(user) {
     serverNow: Date.now(),
     users: users.rows.map(u => ({
       id: u.id, name: u.name, email: admin ? u.email : '', admin: u.admin, active: u.active,
-      feat: u.feat, key: u.has_key ? 'set' : ''
+      feat: u.feat, key: u.has_key ? 'set' : '', keyCheck: admin && u.has_key ? (u.key_check || null) : null
     })),
     products: products.rows.map(p => ({ code: p.code, name: p.name, cat: p.cat, ppp: p.ppp, dflt: Number(p.dflt), active: p.active })),
     customers: customers.rows.map(c => {
@@ -102,7 +102,10 @@ async function buildState(user) {
     set: {
       finalizeMin: set.finalizeMin, autoPrint: set.autoPrint, footer: set.footer, branches: set.branches, offline: set.offline,
       odooUrl: process.env.ODOO_URL || '(not set)', db: process.env.ODOO_DB || '(not set)',
-      company: process.env.ODOO_EXPECT_COMPANY || ''
+      company: process.env.ODOO_EXPECT_COMPANY || '',
+      odooTest: admin ? (set.odooTest || null) : null,
+      odooCheck: admin ? (set.odooCheck || null) : null,
+      reconcile: admin ? (set.reconcile || null) : null
     }
   };
 }

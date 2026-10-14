@@ -376,6 +376,8 @@ input,select,textarea{font-size:16px}
  .pop{top:calc(58px + env(safe-area-inset-top,0px))}
  .content{padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
 }
+body.busy::after{content:"";position:fixed;top:0;left:0;right:0;height:3px;z-index:100;background:linear-gradient(90deg,var(--brand),var(--accent),var(--brand));background-size:200% 100%;animation:ld 1s linear infinite}
+@keyframes ld{to{background-position:-200% 0}}
 @media (prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;transition:none!important}}
 </style>
 </head>
@@ -413,7 +415,7 @@ const ALLF=FEATURES.map(f=>f[0]);
 /* ---------- state (the server is the source of truth) ---------- */
 let S=null, PUB={products:0,customers:0,branches:['Hira Branch','Rahmaniyyah Branch'],finalizeMin:60};
 let UI={auth:'home',hist:[],pay:null,payAdd:false,view:'home',tab:{},q:{},draft:null,modal:null,pop:false,cartOpen:false,toast:null,more:false,sel:{},busy:false};
-let skew=0,lastSnap='';
+let skew=0,lastSnap='',lastModal=null;
 const now=()=>Date.now()+skew;
 function blank(){return {session:null,users:[],products:new Array(PUB.products).fill({active:true}),customers:new Array(PUB.customers).fill({active:true}),custom:{},orders:[],payments:[],credits:[],trays:[],audit:[],set:{branches:PUB.branches,finalizeMin:PUB.finalizeMin}}}
 async function api(method,url,body){
@@ -436,10 +438,10 @@ async function refresh(quiet){
 }
 // run a server action; errors become a message, then the screen is refreshed from the server
 async function act(fn,okMsg){
-  if(UI.busy)return false;UI.busy=true;
+  if(UI.busy)return false;UI.busy=true;document.body.classList.add('busy');
   try{const r=await fn();await refresh();if(okMsg)toast(typeof okMsg==='function'?okMsg(r):okMsg);else render();return r===undefined?true:r}
   catch(e){toast(e.message);return false}
-  finally{UI.busy=false}
+  finally{UI.busy=false;document.body.classList.remove('busy')}
 }
 function audit(action,entity,ref,detail){
   fetch('/api/audit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,entity,ref,detail}),credentials:'same-origin'}).catch(()=>{});
@@ -485,13 +487,11 @@ async function saveOrder(d){await api('PUT','/api/orders/'+d.orderId,{traysIn:d.
 async function cancelOrder(id,reason){await api('POST','/api/orders/'+id+'/cancel',{reason});await refresh()}
 async function finalizeOrder(id,traysOut){
   UI.modal={type:'progress',orderId:id,step:1,offline:S.set.offline};render();
-  const tm=setInterval(()=>{if(UI.modal&&UI.modal.type==='progress'&&UI.modal.step<3){UI.modal.step++;render()}},1100);
   try{
     const r=await api('POST','/api/orders/'+id+'/finalize',{traysOut});
-    clearInterval(tm);await refresh();
+    await refresh();
     UI.modal={type:'done',orderId:id};render();
   }catch(e){
-    clearInterval(tm);
     try{await refresh()}catch(x){}
     const o=S.orders.find(x=>x.id===id);
     if(o&&o.status==='final'){UI.modal={type:'done',orderId:id};render();return} // the server finished although the answer was lost
@@ -568,7 +568,7 @@ function vHome(){
   const col=S.payments.filter(p=>new Date(p.t).toDateString()===today).reduce((a,p)=>a+toC(p.amount),0);
   const pn=pending();const h=new Date(now()).getHours();
   const greet=h<12?'Good morning':h<17?'Good afternoon':'Good evening';
-  return `<div class="stack" style="gap:18px"><div class="greet"><h2>${greet}, ${esc(u.name)}</h2><p>${new Date(now()).toLocaleDateString([], {weekday:'long',day:'numeric',month:'long'})} · ${pn.length?pn.length+' order'+(pn.length>1?'s':'')+' waiting to be finalized':'nothing waiting to be finalized'}</p></div>${setupCard()}
+  return `<div class="stack" style="gap:18px"><div class="greet"><h2>${greet}, ${esc(u.name)}</h2><p>${new Date(now()).toLocaleDateString([], {weekday:'long',day:'numeric',month:'long'})} · ${pn.length?pn.length+' order'+(pn.length>1?'s':'')+' waiting to be finalized':'nothing waiting to be finalized'}</p></div>${setupCard()}${notInOdoo()}
   <div class="grid g4"><div class="card stat"><div class="si">${ic('clock',20)}</div><small>Waiting to finalize</small><b>${pn.length}</b><span>${pn.length?'Next due '+fmtT(Math.min(...pn.map(o=>o.deadline))):'Nothing pending'}</span></div>
   <div class="card stat"><div class="si">${ic('receipt',20)}</div><small>Sales today</small><b class="num">${sar(sales)}</b><span>${fin.length} finalized order${fin.length===1?'':'s'}</span></div>
   <div class="card stat"><div class="si">${ic('wallet',20)}</div><small>Collected today</small><b class="num">${sar(col)}</b><span>${S.payments.filter(p=>new Date(p.t).toDateString()===today).length} payment(s)</span></div>
@@ -582,18 +582,28 @@ function vHome(){
   ${can('trays_view')?`<button class="bigopt" data-act="nav" data-id="trays" style="min-height:104px;padding:16px">${ic('tray',26)}<b style="font-size:18px">Trays</b></button>`:''}</div></div></div>
   <div class="card"><h3>Recent activity</h3>${S.audit.length?`<div class="list">${S.audit.slice(0,6).map(a=>`<div class="li"><div class="grow"><b>${esc(a.action)} <span class="muted" style="font-weight:600">${esc(a.ref)}</span></b><small>${esc(a.user)} · ${fmtT(a.t)} · ${esc(a.detail).slice(0,110)}</small></div></div>`).join('')}</div>`:'<div class="empty">Nothing yet.</div>'}</div></div>`;
 }
+function notInOdoo(){
+  const n=S.orders.filter(o=>o.status==='final'&&(!o.odoo||o.odoo.state!=='posted')).length+S.payments.filter(p=>p.odoo.state!=='posted').length+S.credits.filter(p=>p.odoo.state!=='posted').length;
+  if(!n)return '';
+  return `<div class="hint" style="background:var(--warn-soft);color:var(--warn);display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap"><span>${n} item${n>1?'s are':' is'} not in Odoo yet (waiting or refused).</span>${can('sync_view')?'<button class="btn sm" data-act="nav" data-id="sync">Open Odoo sync</button>':'<span>Tell the administrator.</span>'}</div>`;
+}
 function setupCard(){
   const u=me();if(!u||!u.admin)return '';
   const hasData=S.products.length>0&&S.customers.length>0;
-  const staff=S.users.filter(x=>!x.admin&&x.active&&x.key).length;
+  const staffSaved=S.users.filter(x=>!x.admin&&x.active&&x.key).length;
+  const staffOk=S.users.filter(x=>!x.admin&&x.active&&x.key&&x.keyCheck&&x.keyCheck.ok).length;
+  const staffDone=staffSaved>0&&staffOk===staffSaved;
+  const ready=!!(S.set.odooCheck&&S.set.odooCheck.ok);
   const hasTrays=S.trays.some(r=>r.type==='bopen');
-  if(hasData&&staff&&hasTrays)return '';
+  const bal=!!(S.set.reconcile&&S.set.reconcile.ok);
+  if(hasData&&staffDone&&ready&&hasTrays&&bal)return '';
   const row=(ok,t,d,tab,btn)=>`<div class="li" style="cursor:default"><span class="av" style="${ok?'background:var(--good-soft);color:var(--good)':'background:var(--surface2);color:var(--muted)'}">${ok?ic('check',18):''}</span><div class="grow"><b>${t}</b><small style="white-space:normal">${d}</small></div>${ok?'<span class="pill good">Done</span>':`<button class="btn sm pri" data-act="adm" data-id="${tab}">${btn}</button>`}</div>`;
-  return `<div class="card"><h3>Getting started</h3><p class="muted" style="margin:-4px 0 8px">Do these once, in this order, before the staff start working.</p><div class="list">
+  return `<div class="card"><h3>Getting started</h3><p class="muted" style="margin:-4px 0 8px">A step shows Done only after the app has checked it for real.</p><div class="list">
   ${row(hasData,'1. Load products, customers and prices',hasData?S.products.length+' products and '+S.customers.length+' customers are loaded.':'Choose your starting-data file (data.json) in Data and Odoo.','data','Open')}
-  ${row(staff>0,'2. Add the staff',staff>0?staff+' staff user'+(staff>1?'s':'')+' with an Odoo key.':'Add each person with their own Odoo API key and an app password.','users','Add users')}
-  ${row(false,'3. Check Odoo and load balances','In Data and Odoo: test the connection, load the starting balances, continue the numbers. Use the Demo company only.','data','Open')}
+  ${row(staffDone,'2. Add the staff and check their Odoo keys',staffSaved?staffOk+' of '+staffSaved+' staff keys checked with Odoo and working.':'Add each person with their own Odoo API key and an app password.','users',staffSaved?'Check keys':'Add users')}
+  ${row(ready,'3. Check that Odoo is ready',ready?'Passed '+fmtDT(S.set.odooCheck.t)+'.':(S.set.odooCheck?S.set.odooCheck.failed+' problem(s) found at the last check.':'Not checked yet. Looks for the journals, account, rounding rule, products and customers.'),'data','Check')}
   ${row(hasTrays,'4. Enter the opening trays',hasTrays?'Branch stock is entered.':'Branch stock and the trays each customer holds.','trayopen','Open')}
+  ${row(bal,'5. Compare balances with Odoo',bal?'All customers match Odoo ('+fmtDT(S.set.reconcile.t)+').':(S.set.reconcile?S.set.reconcile.differences+' customer(s) differ at the last check.':'Load the starting balances first, then compare.'),'data','Compare')}
   </div></div>`;
 }
 function pendingRow(o){
@@ -790,7 +800,7 @@ function custDetail(cc,edit){
   const ords=S.orders.filter(o=>o.cust===cc).slice(0,5);
   const adm=me()&&me().admin;
   return `<div class="stack" style="gap:16px"><div class="row sp"><button class="btn sm" data-act="${edit?'admcustback':'custback'}">${ic('back',16)} All customers</button>${adm?(edit?`<button class="btn sm ${c.active?'bad':'pri'}" data-act="custactive" data-id="${cc}">${c.active?'Switch this customer off':'Switch this customer on'}</button>`:`<button class="btn sm pri" data-act="admcustgo" data-id="${cc}">${ic('edit',16)} Edit prices</button>`):''}</div>
-  <div class="grid g4"><div class="card stat"><small>${esc(c.code)}</small><b>${esc(c.name)}</b><span>${c.active?'Active':'Inactive'}</span></div><div class="card stat"><small>Balance</small><b class="num">${sar(balance(c))}</b><span>Mirrors Odoo receivable</span></div><div class="card stat"><small>Trays held</small><b class="num">${held(cc)}</b><span>App only</span></div><div class="card stat"><small>Custom prices</small><b class="num">${Object.keys(S.custom[cc]||{}).length}</b><span>of ${S.products.length} products</span></div></div>
+  <div class="grid g4"><div class="card stat"><small>${esc(c.code)}</small><b>${esc(c.name)}</b><span>${c.active?'Active':'Inactive'}</span></div><div class="card stat"><small>Balance</small><b class="num">${sar(balance(c))}</b><span>Calculated in this app. Compare with Odoo in Admin &gt; Data and Odoo.</span></div><div class="card stat"><small>Trays held</small><b class="num">${held(cc)}</b><span>App only</span></div><div class="card stat"><small>Custom prices</small><b class="num">${Object.keys(S.custom[cc]||{}).length}</b><span>of ${S.products.length} products</span></div></div>
   ${ords.length?`<div class="card"><h3>Recent orders</h3><div class="list">${ords.map(o=>`<div class="li"><div class="grow"><b>${o.id}</b><small>${fmtDT(o.createdAt)} · ${o.status}</small></div><b class="num">${o.status==='final'?sar(o.total):orderTotalTxt(o)}</b></div>`).join('')}</div></div>`:''}
   <div class="card"><div class="row sp" style="margin-bottom:10px"><h3 style="margin:0">Price list</h3><div class="search" style="max-width:300px;flex:1"><span>${ic('search',18)}</span><input class="inp" data-list="prList" placeholder="Search products" value="${esc(UI.q.prList||'')}" autocomplete="off"></div></div>
   <div id="prList">${lPrices(cc,edit)}</div></div></div>`;
@@ -818,7 +828,7 @@ function vAdmin(){
   let b='';
   if(t==='users'){
     b=`<div class="row sp" style="margin-bottom:12px"><p class="muted" style="margin:0;max-width:60ch">A user here is also a user in Odoo. The Odoo email, the API key and the app password are set per person. Invoices and payments posted by this person are created in Odoo under their name.</p><button class="btn pri" data-act="usernew">${ic('plus',16)} Add user</button></div>
-    <div class="tbl"><table><thead><tr><th>User</th><th>Odoo login</th><th>Odoo API key</th><th>Access</th><th>Status</th><th></th></tr></thead><tbody>${S.users.map(u=>`<tr><td><b>${esc(u.name)}</b>${u.admin?' <span class="pill brand">Admin</span>':''}</td><td>${esc(u.email)}</td><td>${u.key?'<span class="pill good">Set</span>':'<span class="pill bad">Missing</span>'}</td><td>${u.admin?'Everything':u.feat.length+' of '+ALLF.length+' features'}</td><td>${u.active?'<span class="pill good">Active</span>':'<span class="pill">Disabled</span>'}</td><td class="r"><button class="btn sm" data-act="useredit" data-id="${u.id}">Edit</button></td></tr>`).join('')}</tbody></table></div>`;
+    <div class="tbl"><table><thead><tr><th>User</th><th>Odoo login</th><th>Odoo key (checked with Odoo)</th><th>Access</th><th>Status</th><th></th></tr></thead><tbody>${S.users.map(u=>`<tr><td><b>${esc(u.name)}</b>${u.admin?' <span class="pill brand">Admin</span>':''}</td><td>${esc(u.email)}</td><td>${keyCell(u)}</td><td>${u.admin?'Everything':u.feat.length+' of '+ALLF.length+' features'}</td><td>${u.active?'<span class="pill good">Active</span>':'<span class="pill">Disabled</span>'}</td><td class="r" style="white-space:nowrap"><button class="btn sm" data-act="checkkey" data-id="${u.id}" ${u.key?'':'disabled'}>Check key</button> <button class="btn sm" data-act="useredit" data-id="${u.id}">Edit</button></td></tr>`).join('')}</tbody></table></div>`;
   } else if(t==='products'){
     const q=UI.q.apList||'';
     b=`<div class="row sp" style="margin-bottom:12px"><div class="search" style="flex:1;max-width:420px"><span>${ic('search',18)}</span><input class="inp" data-list="apList" placeholder="Search products" value="${esc(q)}" autocomplete="off"></div><button class="btn pri" data-act="prodnew">${ic('plus',16)} Add product</button></div><div id="apList">${lAP()}</div>`;
@@ -835,7 +845,8 @@ function vAdmin(){
     <button class="btn" data-act="odootest">Test connection and company name</button>
     <button class="btn" data-act="odoobal">Load starting balances from Odoo</button>
     <button class="btn" data-act="odonum">Continue order, payment and credit note numbers from Odoo</button>
-    ${UI.sel.adminMsg?`<div class="pstat">${esc(UI.sel.adminMsg)}</div>`:''}</div></div>`;
+    ${UI.sel.adminMsg?`<div class="pstat">${esc(UI.sel.adminMsg)}</div>`:''}</div></div>
+    <div class="grid g2" style="align-items:start;margin-top:16px">${readinessCard()}${reconcileCard()}</div>`;
   } else if(t==='audit'){
     b=`<div class="row" style="margin-bottom:12px"><div class="search" style="flex:1;max-width:380px"><span>${ic('search',18)}</span><input class="inp" data-list="auList" placeholder="Search the log" value="${esc(UI.q.auList||'')}" autocomplete="off"></div><select class="inp" id="auser" style="max-width:200px" aria-label="Filter by user"><option value="">All users</option>${S.users.map(u=>`<option ${UI.sel.auser===u.name?'selected':''}>${esc(u.name)}</option>`).join('')}</select></div><div id="auList">${lAU()}</div>`;
   } else {
@@ -844,11 +855,33 @@ function vAdmin(){
     <div class="field"><label for="s1">Minutes allowed to finalize an order</label><input class="inp" id="s1" inputmode="numeric" value="${s.finalizeMin}"><small class="muted">Also capped at midnight of the day it was created.</small></div>
     <div class="field"><label>Branches</label><div class="muted">${s.branches.map(esc).join(' · ')}</div><small class="muted">Names are fixed because the tray ledger keeps them forever.</small></div>
     <h3 style="margin-top:6px">Receipt printer (80 mm)</h3><div class="ftog"><div><b>Print the slip when an order is created</b><small>Opens the printer dialog straight away</small></div><label class="sw"><input type="checkbox" id="s5" ${s.autoPrint?'checked':''}><i></i></label></div><div class="field"><label for="s6">Line at the bottom of the slip</label><input class="inp" id="s6" value="${esc(s.footer)}"></div><button class="btn pri" type="submit">Save settings</button></form>
-    <div class="card stack"><h3>Odoo connection</h3><div class="kv"><dt>Address</dt><dd>${esc(s.odooUrl)}</dd><dt>Database</dt><dd>${esc(s.db)}</dd><dt>Company check</dt><dd>${esc(s.company||"not set")}</dd><dt>Posting</dt><dd>Invoice, payment, credit note</dd><dt>Rounding</dt><dd>Whole riyal, .50 up</dd></div>
+    <div class="card stack"><h3>Odoo connection</h3><div class="kv"><dt>Address</dt><dd>${esc(s.odooUrl)}</dd><dt>Database</dt><dd>${esc(s.db)}</dd><dt>Expected company</dt><dd>${esc(s.company||'not set')}</dd><dt>Last connection test</dt><dd>${s.odooTest?(s.odooTest.ok?'OK · '+esc(s.odooTest.companies.join(', ')):'FAILED')+' · '+fmtDT(s.odooTest.t):'Not tested yet'}</dd><dt>Last readiness check</dt><dd>${s.odooCheck?(s.odooCheck.ok?'Passed':s.odooCheck.failed+' problem(s)')+' · '+fmtDT(s.odooCheck.t):'Not run yet'}</dd></div>
     <div class="ftog"><div><b>Test mode: switch Odoo posting off</b><small>Finalized orders then wait in the sync queue until switched on</small></div><label class="sw"><input type="checkbox" id="offtog" ${s.offline?'checked':''}><i></i></label></div>
     <p class="muted" style="font-size:13px;margin:0">The address is set once for everyone. Each user has their own API key.</p></div></div>`;
   }
   return `<div class="tabs">${tabs.map(x=>`<button class="tab ${t===x[0]?'on':''}" data-act="tab" data-grp="admin" data-id="${x[0]}">${x[1]}</button>`).join('')}</div>${b}`;
+}
+function keyCell(u){
+  if(!u.key)return '<span class="pill bad">No key saved</span>';
+  const k=u.keyCheck;
+  if(!k)return '<span class="pill warn">Saved, not checked yet</span>';
+  const when='<div class="muted" style="font-size:12px">Checked '+fmtDT(k.t)+(k.ok&&k.odooUser?' · Odoo user: '+esc(k.odooUser):'')+'</div>';
+  return k.ok?'<span class="pill good">Works</span>'+(k.note?'<div style="font-size:12px;max-width:280px;white-space:normal;color:var(--warn)">'+esc(k.note)+'</div>':'')+when
+    :'<span class="pill bad">Failed</span><div style="font-size:12px;max-width:280px;white-space:normal;color:var(--bad)">'+esc(k.note)+'</div>'+when;
+}
+function readinessCard(){
+  const oc=S.set.odooCheck;
+  return `<div class="card stack"><h3>3. Check that Odoo is ready</h3><p class="muted" style="margin:0">Read only. Looks in Odoo for the company, the journals, account 500100, the rounding rule, every product code and every customer name. Nothing is created in Odoo.</p>
+  <button class="btn pri" data-act="readiness">Check Odoo now</button>
+  ${oc?`<div class="pstat ${oc.ok?'ok':'bad'}">${oc.ok?'All checks passed':oc.failed+' problem'+(oc.failed>1?'s':'')+' found'} · ${fmtDT(oc.t)}</div><div class="list">${oc.checks.map(c=>`<div class="li" style="cursor:default;align-items:flex-start"><span class="pill ${c.ok?'good':'bad'}">${c.ok?'OK':'Problem'}</span><div class="grow"><b style="white-space:normal">${esc(c.name)}</b>${c.detail?`<small style="white-space:normal;display:block;overflow-wrap:anywhere">${esc(c.detail)}</small>`:''}</div></div>`).join('')}</div>`:'<div class="muted">Not run yet.</div>'}</div>`;
+}
+function reconcileCard(){
+  const rc=S.set.reconcile;
+  return `<div class="card stack"><h3>4. Compare balances with Odoo</h3><p class="muted" style="margin:0">Read only. For every customer, compares the balance in this app with the receivable in Odoo. Items still waiting for Odoo are not counted on the app side and are shown in the last column.</p>
+  <button class="btn pri" data-act="reconcile">Compare now</button>
+  ${rc?`<div class="pstat ${rc.ok?'ok':'bad'}">${rc.same} of ${rc.checked} customers match${rc.differences?' · '+rc.differences+' differ':''}${rc.odooOnly.length?' · '+rc.odooOnly.length+' only in Odoo':''} · ${fmtDT(rc.t)}</div>
+  ${rc.rows.length?`<div class="tbl" style="max-height:340px"><table style="min-width:520px"><thead><tr><th>Customer</th><th class="r">App</th><th class="r">Odoo</th><th class="r">Difference</th><th class="r">Waiting</th></tr></thead><tbody>${rc.rows.map(r=>`<tr><td><b>${esc(r.name)}</b><br><small class="muted">${esc(r.code)}${r.inOdoo?'':' · not found in Odoo'}</small></td><td class="r num">${nf.format(r.app)}</td><td class="r num">${nf.format(r.odoo)}</td><td class="r num"><b style="color:var(--bad)">${r.diff>0?'+':''}${nf.format(r.diff)}</b></td><td class="r num">${r.waiting||'—'}</td></tr>`).join('')}</tbody></table></div>`:''}
+  ${rc.odooOnly.length?`<div class="hint" style="background:var(--warn-soft);color:var(--warn)">In Odoo with a balance, but not in this app: ${rc.odooOnly.map(x=>esc(x.name)+' ('+nf.format(x.balance)+')').join(', ')}</div>`:''}`:'<div class="muted">Not run yet.</div>'}</div>`;
 }
 function lOT(){
   const q=(UI.q.otList||'').toLowerCase();
@@ -892,8 +925,7 @@ function vModal(){
     return wrap(`<h2>${m.title||'Order slip'}</h2><p class="muted" style="margin:0 0 10px">${m.title==='Order created'?`${o.id} is waiting to be finalized. Finalize within ${S.set.finalizeMin} minutes and before midnight.`:'80 mm thermal slip preview.'}</p><div class="rcwrap">${receiptHtml(o)}</div><div class="row" style="margin-top:14px"><button class="btn" data-act="closemodal">Close</button><button class="btn pri" style="flex:1" data-act="print" data-id="${o.id}">${ic('receipt',18)} Print slip</button></div>`);
   }
   if(m.type==='progress'){
-    const L=m.offline?['Odoo is not reachable. Saving to the queue']:['Create the invoice in Odoo','Apply whole-riyal rounding','Post the invoice','Record the tray movement'];
-    return wrap(`<h2>Posting to Odoo</h2><div class="progress">${L.map((l,i)=>`<div class="${m.step>i+1?'done':m.step===i+1?'act':''}">${m.step>i?ic('check',16):'<span class="spin"></span>'}${l}</div>`).join('')}</div>`).replace('data-act="closemodal"','');
+    return wrap(`<h2>Posting to Odoo</h2><div class="progress"><div class="act"><span class="spin"></span>${m.offline?'Odoo is switched off. Saving to the queue.':'Sending the invoice to Odoo. This can take up to a minute. Please wait.'}</div></div>`).replace('data-act="closemodal"','');
   }
   if(m.type==='done'){
     const o=S.orders.find(x=>x.id===m.orderId);
@@ -1048,10 +1080,23 @@ function render(){
   let inner='';
   switch(UI.view){case 'home':inner=vHome();break;case 'new':inner=vNew();break;case 'pending':inner=vPending();break;case 'orders':inner=vOrders();break;case 'payments':inner=vPayments();break;case 'credit':inner=vCredit();break;case 'daily':inner=vDaily();break;case 'trays':inner=vTrays();break;case 'customers':inner=vCustomers();break;case 'sync':inner=vSync();break;case 'admin':inner=vAdmin();break}
   app.innerHTML=shell(inner);
+  // a redraw (for example when a message disappears) must not wipe what is being typed in an open form
+  let keep=null;
+  if(UI.modal&&UI.modal===lastModal){
+    keep={};
+    document.querySelectorAll('#layer input[id]:not([type=file]),#layer select[id],#layer textarea[id]').forEach(e=>{keep[e.id]=e.type==='checkbox'?e.checked:e.value});
+    document.querySelectorAll('#layer [data-feat]').forEach(e=>{keep['f:'+e.dataset.feat]=e.checked});
+  }
+  lastModal=UI.modal;
   let lay=vModal();
   if(UI.pop)lay+=popHtml();
   if(UI.toast)lay+=`<div class="toast" role="status">${esc(UI.toast)}</div>`;
   $('#layer').innerHTML=lay;
+  if(keep)Object.keys(keep).forEach(k=>{
+    if(k.startsWith('f:')){const e=document.querySelector('#layer [data-feat="'+k.slice(2)+'"]');if(e)e.checked=keep[k];return}
+    const e=document.getElementById(k);if(!e)return;
+    if(e.type==='checkbox')e.checked=keep[k];else if(e.value!==keep[k])e.value=keep[k];
+  });
   const c2=$('#content');if(c2)c2.scrollTop=top;const ch2=$('#chips');if(ch2)ch2.scrollLeft=cl;
   if(afId){const e=document.getElementById(afId);if(e){e.focus();try{e.setSelectionRange(afSel[0],afSel[1])}catch(x){}}}
 }
@@ -1156,6 +1201,9 @@ document.addEventListener('click',e=>{
    case 'prodnew':UI.modal={type:'prod',id:null};render();break;
    case 'prodedit':UI.modal={type:'prod',id};render();break;
    case 'custnew':UI.modal={type:'cust'};render();break;
+   case 'checkkey':act(()=>api('POST','/api/admin/users/'+id+'/check-key'),r=>r.ok?'Key works with Odoo'+(r.note?'. '+r.note:''):'Key failed: '+r.note);break;
+   case 'readiness':act(()=>api('POST','/api/admin/odoo/readiness'),r=>r.ok?'Odoo is ready. All checks passed.':r.failed+' problem'+(r.failed>1?'s':'')+' found. See the list.');break;
+   case 'reconcile':act(()=>api('POST','/api/admin/odoo/reconcile'),r=>r.ok?'All '+r.checked+' customers match Odoo.':r.differences+' customer'+(r.differences===1?'':'s')+' differ from Odoo. See the list.');break;
    case 'adm':UI.hist.push(UI.view);UI.view='admin';UI.tab.admin=id;UI.sel.admCust=null;UI.modal=null;render();break;
    case 'admcustgo':UI.hist.push(UI.view);UI.view='admin';UI.tab.admin='custs';UI.sel.admCust=id;UI.q.prList='';render();break;
    case 'custactive':{const c=cust(id);act(()=>api('PUT','/api/admin/customers/'+encodeURIComponent(id),{active:!c.active}),c.active?c.name+' is switched off. Hidden from new orders.':c.name+' is switched on.');break}
@@ -1205,7 +1253,7 @@ async function saveUser(){
   const feat=[...document.querySelectorAll('[data-feat]')].filter(x=>x.checked).map(x=>x.dataset.feat);
   const adm=$('#uadm').checked,act0=$('#ua').checked;
   const body={name,email,admin:adm,active:act0,feat,key:key||undefined,password:pw||undefined};
-  const ok=await act(()=>m.id?api('PUT','/api/admin/users/'+m.id,body):api('POST','/api/admin/users',body),'User saved');
+  const ok=await act(()=>m.id?api('PUT','/api/admin/users/'+m.id,body):api('POST','/api/admin/users',body),r=>!r.keyCheck?'User saved':r.keyCheck.ok?'User saved. The Odoo key works.'+(r.keyCheck.note?' '+r.keyCheck.note:''):'User saved, but the Odoo key does NOT work: '+r.keyCheck.note);
   if(ok){UI.modal=null;render()}
 }
 async function saveProd(){
