@@ -37,6 +37,16 @@ Orders, payments, credit notes and trays for Eman Bakery, Jeddah. The app is the
 8. Try a few orders, payments and a credit note, then check them in Odoo.
 9. Phone or tablet: open the Replit address and choose "Add to Home Screen".
 
+## Running somewhere other than Replit (optional)
+
+The app is plain Node.js plus a PostgreSQL database, so any host that can run `npm start` with the same settings works. Nothing in the code is Replit-specific.
+
+- Settings (all secret, set in the host's dashboard): `DATABASE_URL`, `APP_SECRET`, `ADMIN_PASSWORD`, `ODOO_URL`, `ODOO_DB`, `ODOO_EXPECT_COMPANY`. The host provides `PORT`.
+- Build: `npm ci --omit=dev`. Start: `npm start`. Health check: `/healthz`.
+- `render.yaml` is ready for Render. Replit ignores it.
+- Use a new database (for example a new Supabase project, with its Session pooler connection string). Never the old production database.
+- Run exactly one copy of the app against one database, because the Odoo retry queue runs inside the app.
+
 ## Going live later
 
 Only when the owner says "go" in words: change `ODOO_URL`, `ODOO_DB`, `ODOO_EXPECT_COMPANY` to the live company, give each user their live Odoo API key in Admin > Users, run step 6 again on a fresh database. Never share keys in chat, files or this repository.

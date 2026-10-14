@@ -1,0 +1,26 @@
+# Optional: lets Render run this app. Replit ignores this file.
+# Secrets are NOT stored here. Render asks for them when you create the service.
+services:
+  - type: web
+    name: eman-orders
+    runtime: node
+    plan: free
+    region: frankfurt
+    buildCommand: npm ci --omit=dev
+    startCommand: npm start
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_VERSION
+        value: 20
+      - key: DATABASE_URL
+        sync: false
+      - key: APP_SECRET
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: ODOO_URL
+        sync: false
+      - key: ODOO_DB
+        sync: false
+      - key: ODOO_EXPECT_COMPANY
+        sync: false
