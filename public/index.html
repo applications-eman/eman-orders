@@ -314,7 +314,6 @@ tbody tr{transition:background .12s}tbody tr:hover td{background:color-mix(in sr
 }
 @media (max-width:760px){
   .cartbtn{display:grid}
-  .top{position:relative;z-index:29}
   .cdbk{display:block;position:fixed;left:0;right:0;bottom:0;top:var(--hdrh,64px);background:rgba(6,12,9,.45);z-index:26;opacity:0;pointer-events:none;transition:opacity .22s}
   .cdbk.open{opacity:1;pointer-events:auto}
   .cdrop{display:block;position:fixed;left:0;right:0;top:var(--hdrh,64px);z-index:27;background:var(--surface);border-radius:0 0 22px 22px;box-shadow:0 18px 40px rgba(0,0,0,.28);padding:14px 16px 16px;max-height:calc(100dvh - var(--hdrh,64px) - var(--tab-h) - 24px - env(safe-area-inset-bottom,0px));overflow:auto;transform:translateY(-110%);visibility:hidden;transition:transform .26s ease-out,visibility 0s .26s}
@@ -406,6 +405,16 @@ input,select,textarea{font-size:16px}
 body.busy::after{content:"";position:fixed;top:0;left:0;right:0;height:3px;z-index:100;background:linear-gradient(90deg,var(--brand),var(--accent),var(--brand));background-size:200% 100%;animation:ld 1s linear infinite}
 @keyframes ld{to{background-position:-200% 0}}
 @media (prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;transition:none!important}}
+/* ===== phone: the whole page scrolls like a normal web page (as in the old app); the bottom bar stays fixed over it ===== */
+@media (max-width:760px){
+  html,body{height:auto;min-height:100%;overflow:visible;overscroll-behavior-y:contain}
+  body{overflow-x:hidden}
+  html:has(.mask),html:has(.mask) body{overflow:hidden}
+  #app,.shell,.main{display:block;height:auto;min-height:100vh}
+  @supports (height:100svh){#app,.shell,.main{min-height:100svh}}
+  .shell .content{overflow:visible}
+  .top{position:sticky;top:0;z-index:29}
+}
 </style>
 </head>
 <body>
@@ -1147,7 +1156,7 @@ function printOrder(id){
 function setPage(css){let s=document.getElementById('pagestyle');if(!s){s=document.createElement('style');s.id='pagestyle';document.head.appendChild(s)}s.textContent=css}
 /* ---------- render ---------- */
 function render(){
-  const app=$('#app');const sc=$('#content');const top=sc?sc.scrollTop:0;const chips=$('#chips');const cl=chips?chips.scrollLeft:0;
+  const app=$('#app');const sc=$('#content');const pg=phone();const top=pg?window.scrollY:(sc?sc.scrollTop:0);const chips=$('#chips');const cl=chips?chips.scrollLeft:0;
   const af=document.activeElement;const afId=af&&af.id&&af.tagName==='INPUT'?af.id:null;const afSel=afId?[af.selectionStart,af.selectionEnd]:null;
   if(!S||!S.session){if(!S)S=blank();app.innerHTML=vLanding();$('#layer').innerHTML='';return}
   if(!NAV.find(n=>n[0]===UI.view&&n[3]()))UI.view='home';
@@ -1174,7 +1183,7 @@ function render(){
     if(e.type==='checkbox')e.checked=keep[k];else if(e.value!==keep[k])e.value=keep[k];
   });
   const tp=$('.top');if(tp)document.documentElement.style.setProperty('--hdrh',tp.offsetHeight+'px');
-  const c2=$('#content');if(c2)c2.scrollTop=top;const ch2=$('#chips');if(ch2)ch2.scrollLeft=cl;
+  const c2=$('#content');if(pg)window.scrollTo(0,top);else if(c2)c2.scrollTop=top;const ch2=$('#chips');if(ch2)ch2.scrollLeft=cl;
   if(afId){const e=document.getElementById(afId);if(e){e.focus();try{e.setSelectionRange(afSel[0],afSel[1])}catch(x){}}}
 }
 function goBack(){
