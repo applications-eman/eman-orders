@@ -635,12 +635,7 @@ function vNew(){
   } else if(d.step===2){
     b=`<div class="row sp" style="margin-bottom:12px"><h2>Choose the customer</h2></div><div class="search" style="margin-bottom:10px"><span>${ic('search',18)}</span><input class="inp" id="cq" data-list="custList" placeholder="Search ${S.customers.length} customers" value="${esc(UI.q.custList||'')}" autocomplete="off"></div><div class="card" style="padding:6px 12px"><div class="list" id="custList">${lCust()}</div></div>`;
   } else if(d.step===3){
-    const v=d.tin||'0';
-    b=`<h2 style="margin-bottom:6px">How many trays did ${esc(cust(d.cust).name)} bring?</h2><p class="muted" style="margin:0 0 10px">Brought trays are taken off what they owe and added to the ${esc(d.branch)} stock.</p><div class="hint" style="margin-bottom:14px">${maxIn()>0?`${esc(cust(d.cust).name)} holds ${maxIn()} trays. You cannot enter more than that.`:`${esc(cust(d.cust).name)} holds no trays, so only 0 can be entered.`}</div>
-    <div class="stack" style="align-items:flex-start"><div class="kdisp num" id="kd" style="width:100%">${esc(v)}</div>
-    <div class="row">${[0,5,10,20,30].map(n=>`<button class="chip" data-act="tset" data-id="${n}">${n}</button>`).join('')}</div>
-    <div class="keypad" style="width:100%">${[1,2,3,4,5,6,7,8,9].map(n=>`<button data-act="key" data-id="${n}">${n}</button>`).join('')}<button data-act="key" data-id="C" aria-label="Clear">C</button><button data-act="key" data-id="0">0</button><button data-act="key" data-id="B" aria-label="Backspace">⌫</button></div>
-    <button class="btn pri" style="width:100%;max-width:340px" data-act="tnext">Continue to products ${ic('chev',18)}</button></div>`;
+    b=`<h2 style="margin-bottom:6px">Incoming trays from ${esc(cust(d.cust).name)}</h2><p class="muted" style="margin:0 0 14px">${esc(cust(d.cust).name)} holds ${maxIn()} trays.</p><button class="btn pri" data-act="trayopen">Enter incoming trays</button>`;
   } else b=vPick(d);
   return stepsBar(d)+b;
 }
@@ -922,6 +917,16 @@ function lAU(){
 function vModal(){
   const m=UI.modal;if(!m)return '';
   const wrap=(c,cls='')=>`<div class="mask ${cls}" data-act="${m.lock?'':'closemodal'}" data-bg="1"><div class="modal ${m.wide?'wide':''}" role="dialog" aria-modal="true">${c}</div></div>`;
+  if(m.type==='trayin'){
+    const d=UI.draft;const c=cust(d.cust);const mx=maxIn();const v=m.val||'';const n=Number(v||0);const bad=v===''||n>mx;
+    return wrap(`<h2 style="margin-bottom:4px">Incoming trays</h2><div class="row sp" style="margin-bottom:12px"><b>${esc(c.name)}</b><span class="muted">${esc(d.branch)}</span></div>
+    <div class="hint" style="margin-bottom:8px">${mx>0?`${esc(c.name)} holds ${mx} trays. You cannot enter more than that.`:`${esc(c.name)} holds no trays, so only 0 can be entered.`}</div>
+    <p class="muted" style="margin:0 0 12px;font-size:13.5px">Brought trays are taken off what they owe and added to the ${esc(d.branch)} stock.</p>
+    <label for="tiq" style="font-weight:700;display:block;margin-bottom:6px">How many trays did the customer bring?</label>
+    <input class="inp num" id="tiq" inputmode="numeric" pattern="[0-9]*" maxlength="3" autocomplete="off" value="${esc(v)}" style="font-family:var(--f-disp);font-size:44px;font-weight:700;text-align:center;padding:10px;border:2px solid var(--brand);border-radius:16px;width:100%">
+    <div class="pstat ${bad?'bad':'ok'}" id="tistat" style="margin-top:10px">${v===''?'Type the number of trays (0 if none), then press Enter':n>mx?'Customer holds only '+mx+' trays':n+' trays will be recorded as brought'}</div>
+    <div class="row" style="margin-top:14px"><button class="btn" data-act="closemodal">Cancel</button><button class="btn" data-act="tinzero">None (0)</button><button class="btn pri" style="flex:1" id="tigo" data-act="tinok" ${bad?'disabled':''}>Continue ${ic('chev',18)}</button></div>`);
+  }
   if(m.type==='fin'){
     const o=S.orders.find(x=>x.id===m.id);const T=totals(o.lines,o.cust,true);const v=m.tout||'0';
     return wrap(`<h2>Finalize ${o.id}</h2><div class="row sp" style="margin-bottom:8px"><b>${esc(cust(o.cust).name)}</b><span class="muted">${esc(o.branch)}</span></div>
@@ -1135,7 +1140,7 @@ function goBack(){
   const d=UI.draft;
   if(UI.modal&&UI.modal.type!=='progress'){UI.modal=null;return render()}
   if(UI.pop){UI.pop=false;return render()}
-  if(UI.view==='new'&&d){if(d.orderId){UI.draft=null;UI.view='pending';return render()}if(d.step>1){d.step--;return render()}}
+  if(UI.view==='new'&&d){if(d.orderId){UI.draft=null;UI.view='pending';return render()}if(d.step>1){d.step--;if(d.step===3)return openTray();return render()}}
   if(UI.view==='customers'&&UI.sel.custView){UI.sel.custView=null;return render()}
   if(UI.view==='admin'&&UI.tab.admin==='custs'&&UI.sel.admCust){UI.sel.admCust=null;return render()}
   if(UI.view==='trays'&&(UI.sel.trayCust||UI.sel.trayBr)){UI.sel.trayCust=null;UI.sel.trayBr=null;UI.tab.trays='over';return render()}
@@ -1155,6 +1160,8 @@ function tick(){
 }
 
 /* ---------- events ---------- */
+function openTray(){UI.modal={type:'trayin',val:UI.draft.tin||''};render();const e=document.getElementById('tiq');if(e){e.focus();e.select()}}
+function trayDone(n){const d=UI.draft;d.traysIn=n;d.tin=String(n);d.step=4;UI.modal=null;render()}
 function setKey(cur,k,max){if(k==='C')return '';if(k==='B')return cur.slice(0,-1);const n=(cur+k).replace(/^0+(?=\d)/,'');return n.length>3?cur:n}
 document.addEventListener('click',e=>{
   const bg=e.target.closest('[data-bg]');
@@ -1176,8 +1183,11 @@ document.addEventListener('click',e=>{
    case 'bell':UI.pop=!UI.pop;render();break;
    case 'logout':api('POST','/api/logout').catch(()=>{}).then(()=>{S=blank();lastSnap='';UI.auth='login';UI.hist=[];UI.pay=null;UI.pop=false;UI.modal=null;UI.draft=null;UI.view='home';render()});break;
    case 'branch':UI.draft.branch=id;UI.draft.step=2;render();break;
-   case 'step':UI.draft.step=Number(id);render();break;
-   case 'pickcust':UI.draft.cust=id;UI.draft.step=3;UI.draft.tin=UI.draft.tin||'';render();break;
+   case 'step':UI.draft.step=Number(id);if(UI.draft.step===3)openTray();else render();break;
+   case 'pickcust':UI.draft.cust=id;UI.draft.step=3;UI.draft.tin='';openTray();break;
+   case 'trayopen':openTray();break;
+   case 'tinok':{const v=(UI.modal.val||'');const n=Number(v||0);if(v===''||n>maxIn())break;trayDone(n);break}
+   case 'tinzero':trayDone(0);break;
    case 'tset':if(Number(id)>maxIn()){toast('Customer holds only '+maxIn()+' trays');break}UI.draft.tin=String(id);render();break;
    case 'key':{const n=setKey(UI.draft.tin||'',id);if(Number(n||0)>maxIn()){toast('Customer holds only '+maxIn()+' trays');break}UI.draft.tin=n;render();break}
    case 'tnext':if(Number(UI.draft.tin||0)>maxIn()){toast('Customer holds only '+maxIn()+' trays');break}UI.draft.traysIn=Number(UI.draft.tin||0);UI.draft.step=4;render();break;
@@ -1306,6 +1316,11 @@ async function saveProd(){
 }
 document.addEventListener('input',e=>{
   const t=e.target;
+  if(t.id==='tiq'&&UI.modal&&UI.modal.type==='trayin'){
+    t.value=t.value.replace(/\D/g,'').slice(0,3);UI.modal.val=t.value;
+    const mx=maxIn(),n=Number(t.value||0),bad=t.value===''||n>mx;
+    const st=$('#tistat');if(st){st.textContent=t.value===''?'Type the number of trays (0 if none), then press Enter':n>mx?'Customer holds only '+mx+' trays':n+' trays will be recorded as brought';st.className='pstat '+(bad?'bad':'ok')}
+    const go=$('#tigo');if(go)go.disabled=bad;return}
   if(t.id==='xq'&&UI.modal&&UI.modal.type==='xfer'){const m=UI.modal;m.qty=t.value;const from=m.from||S.set.branches[0];const to=S.set.branches.find(x=>x!==from);const q=parseInt(t.value,10)||0;
     const pv=$('#xprev');if(pv){pv.textContent=xferPrev(from,to,q);pv.className='pstat '+(q>0&&q<=bstock(from)?'ok':'bad')}const go=$('#xgo');if(go)go.disabled=!(q>0&&q<=bstock(from));return}
   if(t.id==='pa'){payState().total=t.value;updPay();return}
@@ -1342,6 +1357,7 @@ document.addEventListener('touchmove',e=>{if(e.touches&&e.touches.length>1)e.pre
 try{history.pushState({g:1},'')}catch(x){}
 window.addEventListener('popstate',()=>{if(S&&S.session)goBack();try{history.pushState({g:1},'')}catch(x){}});
 document.addEventListener('keydown',e=>{
+  if(e.key==='Enter'&&e.target.id==='tiq'&&UI.modal&&UI.modal.type==='trayin'){e.preventDefault();const g=$('#tigo');if(g&&!g.disabled)g.click();return}
   if(e.key==='Enter'||e.key===' '){const t=e.target.closest&&e.target.closest('.pt');if(t&&e.target===t){e.preventDefault();t.click()}}
   if(e.key==='Escape'&&UI.modal&&UI.modal.type!=='progress'){UI.modal=null;render()}
 });

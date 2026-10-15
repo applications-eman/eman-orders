@@ -116,11 +116,14 @@ let checks = 0;
     });
     await step('new order: search and pick customer', async () => {
       await pg.fill('#cq', data.C[0][1].slice(0, 4)); await click('[data-act="pickcust"]');
-      await pg.waitForSelector('.kdisp'); await layout('trays step'); await shot('trays_step');
+      await pg.waitForSelector('#tiq'); await layout('trays popup'); await shot('trays_step');
     });
     await step('new order: keypad', async () => {
-      await click('[data-act="key"][data-id="1"]'); await click('[data-act="key"][data-id="2"]'); await click('[data-act="key"][data-id="B"]'); await click('[data-act="key"][data-id="C"]');
-      await click('[data-act="tset"][data-id="5"]'); await click('[data-act="tnext"]');
+      // the popup opens by itself with the cursor already in the number box: just type, no click needed
+      if (!(await pg.evaluate(() => document.activeElement && document.activeElement.id === 'tiq'))) throw new Error('number box is not focused');
+      await pg.keyboard.type('12x'); if ((await pg.inputValue('#tiq')) !== '12') throw new Error('only digits expected, got ' + (await pg.inputValue('#tiq')));
+      await pg.keyboard.press('Backspace'); await pg.keyboard.press('Backspace');
+      await pg.keyboard.type('0'); await pg.keyboard.press('Enter');
     });
     await step('new order: products, packets, quantity', async () => {
       await pg.waitForSelector('[data-act="cat"]'); await shot('picker_empty'); await layout('picker');
@@ -144,7 +147,7 @@ let checks = 0;
     });
     await step('pending: print slip opens without error', async () => { await pg.evaluate(() => { window.print = () => {}; }); await click('[data-act="print"]'); });
     await step('pending: cancel an order', async () => {
-      await nav('new'); await click('[data-act="branch"][data-id="Hira Branch"]'); await click('[data-act="pickcust"]'); await click('[data-act="tnext"]');
+      await nav('new'); await click('[data-act="branch"][data-id="Hira Branch"]'); await click('[data-act="pickcust"]'); await pg.waitForSelector('#tiq'); await click('[data-act="tinzero"]');
       const cats = await pg.$$('.catgrid [data-act="cat"]'); await cats[0].click(); const pcs = await pg.$$('[data-act="pcs"]'); if (pcs.length) await pcs[0].click();
       await click('.pt[data-act="padd"]');
       if (w < 1100) { await click('[data-act="opencart"]'); await click('.modal [data-act="create"]'); } else await click('.cart [data-act="create"]');

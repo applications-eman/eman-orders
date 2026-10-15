@@ -71,8 +71,9 @@ async function api(method, p, body, cookie) {
     await pg.evaluate(() => document.querySelector('[data-act="nav"][data-id="new"]').click());
     await pg.click('[data-act="branch"]');
     await pg.click('[data-act="pickcust"]');
-    await pg.click('[data-act="tset"][data-id="5"]');
-    await pg.click('[data-act="tnext"]');
+    await pg.waitForSelector('#tiq');
+    await pg.keyboard.type('0');
+    await pg.keyboard.press('Enter');
     await pg.click('[data-act="cat"]');
     const pcs = await pg.$('[data-act="pcs"]');
     if (pcs) await pcs.click();
