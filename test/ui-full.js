@@ -112,7 +112,15 @@ let checks = 0;
     // new order, with the back button on each step
     await step('new order: branch -> back', async () => {
       await nav('new'); await click('[data-act="branch"][data-id="Hira Branch"]');
-      await pg.waitForSelector('#cq'); await click('[data-act="back"]'); await pg.waitForSelector('[data-act="branch"]'); await click('[data-act="branch"][data-id="Hira Branch"]');
+      await pg.waitForSelector('#cq');
+      // the step bar cannot be used to jump back, and Back asks before throwing the order away
+      if (await pg.$('.steps [data-act="step"]')) throw new Error('step bar lets the user jump back on a new order');
+      await click('[data-act="back"]'); await pg.waitForSelector('.modal #askno'); await shot('ask_cancel');
+      if (!/cancel this order/i.test(await pg.innerText('.modal'))) throw new Error('cancel question missing');
+      await click('#askno'); await pg.waitForSelector('#cq');
+      await click('[data-act="back"]'); await pg.waitForSelector('.modal #askno'); await click('[data-act="askyes"]');
+      await pg.waitForFunction(() => !document.querySelector('.modal'), null, { timeout: 4000 });
+      await nav('new'); await pg.waitForSelector('[data-act="branch"]'); await click('[data-act="branch"][data-id="Hira Branch"]');
     });
     await step('new order: search and pick customer', async () => {
       await pg.fill('#cq', data.C[0][1].slice(0, 4)); await click('[data-act="pickcust"]');
@@ -163,6 +171,7 @@ let checks = 0;
       await nav('pending'); await shot('pending'); await layout('pending');
       await click('[data-act="editord"]'); await pg.waitForSelector('.pt, .ghost');
       await pg.evaluate(() => document.querySelector('[data-act="back"]').click());
+      await pg.waitForSelector('.modal #askno'); await click('[data-act="askyes"]');
     });
     await step('pending: print slip opens without error', async () => { await pg.evaluate(() => { window.print = () => {}; }); await click('[data-act="print"]'); });
     await step('pending: cancel an order', async () => {
@@ -234,9 +243,24 @@ let checks = 0;
     });
     await step('odoo sync screen', async () => { await nav('sync'); await shot('sync'); await layout('sync'); });
     await step('staff cannot see admin', async () => { if (await pg.$('[data-act="nav"][data-id="admin"]')) throw new Error('admin menu visible'); });
+    await step('leaving an unfinished order through the menu asks first', async () => {
+      await nav('new'); await click('[data-act="branch"][data-id="Hira Branch"]');
+      await pg.evaluate(() => document.querySelector('[data-act="nav"][data-id="payments"]').click());
+      await pg.waitForSelector('.modal #askno'); await click('#askno');
+      if (!(await pg.$('#cq'))) throw new Error('order was lost although the user chose to keep it');
+      await pg.evaluate(() => document.querySelector('[data-act="nav"][data-id="payments"]').click());
+      await pg.waitForSelector('.modal #askno'); await click('[data-act="askyes"]');
+      await pg.waitForFunction(() => !document.querySelector('.modal') && document.querySelector('#pa'), null, { timeout: 4000 });
+      await nav('new'); await pg.waitForSelector('[data-act="branch"]');
+    });
     await step('more sheet and sign out', async () => {
       if (w < 800) { await click('[data-act="more"]'); await shot('more'); await click('.modal [data-act="nav"] >> nth=0').catch(() => {}); }
-      await pg.evaluate(() => document.querySelector('[data-act="logout"]').click()); await pg.waitForSelector('[data-act="gologin"], #lf');
+      await pg.evaluate(() => document.querySelector('[data-act="logout"]').click());
+      await pg.waitForSelector('.modal #askno'); if (!/log out/i.test(await pg.innerText('.modal'))) throw new Error('logout question missing');
+      await click('#askno'); await pg.waitForFunction(() => !document.querySelector('.modal'), null, { timeout: 3000 });
+      if (await pg.$('[data-act="gologin"]')) throw new Error('logged out although the user said no');
+      await pg.evaluate(() => document.querySelector('[data-act="logout"]').click());
+      await pg.waitForSelector('.modal [data-act="askyes"]'); await click('[data-act="askyes"]'); await pg.waitForSelector('[data-act="gologin"], #lf');
     });
   };
 
@@ -287,7 +311,7 @@ let checks = 0;
       if (!/not customers here/.test(t) || !/NOT A CUSTOMER/.test(t)) throw new Error('unknown name was not reported');
       if (!/preview, nothing saved yet/.test(t)) throw new Error('not shown as a preview');
       await shot('admin_tray_file'); await layout('admin tray file');
-      await click('[data-act="otapply"]');
+      await click('[data-act="otapply"]'); await pg.waitForSelector('.modal [data-act="askyes"]'); await click('[data-act="askyes"]');
       await pg.waitForFunction(() => /Opening trays saved/.test(document.body.innerText), null, { timeout: 8000 });
     });
     await step('admin: data and Odoo', async () => {

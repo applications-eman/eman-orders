@@ -644,7 +644,7 @@ function stepsBar(d){
   const L=['Branch','Customer','Trays','Products'];
   return `<div class="steps">${L.map((l,i)=>{const n=i+1;const cls=d.step===n?'on':(d.step>n?'done':'');
    const val=n===1?d.branch:n===2&&d.cust?cust(d.cust).name:n===3&&d.traysIn!=null?d.traysIn+' trays':'';
-   const can=!d.orderId&&n<d.step||(d.orderId&&n>=3&&n!==d.step);
+   const can=d.orderId&&n>=3&&n!==d.step;
    return `<button class="stp ${cls}" ${can?`data-act="step" data-id="${n}"`:'disabled'} style="${can?'cursor:pointer':''}"><i>${d.step>n?ic('check',12):n}</i>${l}${val?`<b style="color:var(--ink)">· ${esc(val)}</b>`:''}</button>`}).join('')}</div>`;
 }
 function vNew(){
@@ -949,6 +949,9 @@ function vModal(){
     <div class="pstat ${bad?'bad':'ok'}" id="tistat" style="margin-top:10px">${v===''?'Type the number of trays (0 if none), then press Enter':n>mx?'Customer holds only '+mx+' trays':n+' trays will be recorded as brought'}</div>
     <div class="row" style="margin-top:14px"><button class="btn" data-act="closemodal">Cancel</button><button class="btn" data-act="tinzero">None (0)</button><button class="btn pri" style="flex:1" id="tigo" data-act="tinok" ${bad?'disabled':''}>Continue ${ic('chev',18)}</button></div>`);
   }
+  if(m.type==='ask'){
+    return wrap(`<h2 style="margin-bottom:8px">${esc(m.title)}</h2><p class="muted" style="margin:0;font-size:15px;line-height:1.45">${esc(m.text)}</p><div class="row" style="margin-top:20px;gap:10px"><button class="btn" id="askno" style="flex:1" data-act="closemodal">${esc(m.keep)}</button><button class="btn ${m.danger?'bad':'pri'}" style="flex:1" data-act="askyes">${esc(m.yes)}</button></div>`);
+  }
   if(m.type==='qty'){
     const d=UI.draft,p=prod(m.code),pr=priceFor(d.cust,m.code),l=d.lines.find(x=>x.code===m.code);
     return `<div class="mask qmask" data-act="closemodal" data-bg="1"><div class="pt on qcard" role="dialog" aria-modal="true" aria-label="${esc(p.name)}"><div class="pt-name">${esc(p.name)}</div><div class="pt-meta">${p.ppp} pcs per packet${l?` · in order now: ${l.qty}`:''}</div>
@@ -1171,11 +1174,12 @@ function goBack(){
   const d=UI.draft;
   if(UI.modal&&UI.modal.type!=='progress'){UI.modal=null;return render()}
   if(UI.pop){UI.pop=false;return render()}
-  if(UI.view==='new'&&d){if(d.orderId){UI.draft=null;UI.view='pending';return render()}if(d.step>1){d.step--;if(d.step===3)return openTray();return render()}}
   if(UI.view==='customers'&&UI.sel.custView){UI.sel.custView=null;return render()}
   if(UI.view==='admin'&&UI.tab.admin==='custs'&&UI.sel.admCust){UI.sel.admCust=null;return render()}
   if(UI.view==='trays'&&(UI.sel.trayCust||UI.sel.trayBr)){UI.sel.trayCust=null;UI.sel.trayBr=null;UI.tab.trays='over';return render()}
   if(UI.view==='payments'&&UI.pay&&UI.pay.lines.length&&UI.payAdd){UI.payAdd=false;return render()}
+  const edit=!!(d&&d.orderId&&UI.view==='new');
+  if(askLeave(()=>{if(edit){UI.view='pending';render()}else goBack()}))return;
   let v=UI.hist.pop();if(!v||!NAV.find(n=>n[0]===v&&n[3]()))v='home';
   UI.view=v;render();
 }
@@ -1191,6 +1195,22 @@ function tick(){
 }
 
 /* ---------- events ---------- */
+let askFn=null;
+function ask(title,text,yes,fn,o){o=o||{};askFn=fn;UI.modal={type:'ask',title,text,yes,keep:o.keep||'Cancel',danger:o.danger!==false};render();const e=document.getElementById('askno');if(e)e.focus()}
+// work that would be lost when the user leaves the screen: describes it, or null when nothing was entered yet
+function unsaved(){
+  const d=UI.draft,P=UI.pay;
+  if(UI.view==='new'&&d){
+    if(d.orderId)return {title:'Leave without saving?',text:'The changes you made to '+d.orderId+' will be lost. The order stays as it was.',yes:'Yes, leave without saving',keep:'No, keep editing',discard(){UI.draft=null}};
+    if(d.branch||d.lines.length)return {title:'Cancel this order?',text:'This order is not created yet. If you go back now, everything entered so far (branch, customer, trays and products) is discarded and cannot be recovered.',yes:'Yes, cancel the order',keep:'No, continue the order',discard(){UI.draft=null;UI.cartOpen=false}};
+  }
+  if(UI.view==='payments'&&P&&(String(P.total||'').trim()!==''||P.lines.length))return {title:'Cancel this payment?',text:'This payment is not posted yet. If you leave now, the amount and the customers you chose are discarded.',yes:'Yes, cancel the payment',keep:'No, continue the payment',discard(){UI.pay=null;UI.payAdd=false;UI.q.payList=''}};
+  if(UI.view==='credit'&&UI.sel.cn)return {title:'Cancel this credit note?',text:'This credit note is not posted yet. If you leave now, what you entered is discarded.',yes:'Yes, cancel the credit note',keep:'No, continue',discard(){UI.sel.cn=null;UI.sel.reason=null}};
+  return null;
+}
+function askLeave(then){const u=unsaved();if(!u)return false;ask(u.title,u.text,u.yes,()=>{u.discard();then()},{keep:u.keep});return true}
+function navTo(id){if(id!==UI.view){UI.hist.push(UI.view);if(UI.hist.length>25)UI.hist.shift()}UI.view=id;UI.more=false;UI.modal=null;UI.pop=false;if(id==='new'&&!UI.draft)startDraft();if(id!=='admin')UI.sel.admCust=null;render()}
+function doLogout(){api('POST','/api/logout').catch(()=>{}).then(()=>{S=blank();lastSnap='';UI.auth='login';UI.hist=[];UI.pay=null;UI.pop=false;UI.modal=null;UI.draft=null;UI.cartOpen=false;UI.view='home';render()})}
 function phone(){return innerWidth<=760}
 function hideKb(){const a=document.activeElement;if(a&&a.blur){if(a.tagName==='INPUT')a.setAttribute('readonly','');a.blur()}}
 function qtyApply(id,raw){
@@ -1235,11 +1255,12 @@ document.addEventListener('click',e=>{
    case 'gohome':UI.auth='home';render();break;
    case 'togpw':{const p=$('#lp');const show=p.type==='password';p.type=show?'text':'password';t.innerHTML=ic(show?'eyeoff':'eye',18);t.setAttribute('aria-label',show?'Hide password':'Show password');break}
    case 'back':goBack();break;
-   case 'nav':if(id!==UI.view){UI.hist.push(UI.view);if(UI.hist.length>25)UI.hist.shift()}UI.view=id;UI.more=false;UI.modal=null;UI.pop=false;if(id==='new'&&!UI.draft)startDraft();if(id!=='admin')UI.sel.admCust=null;render();break;
+   case 'nav':if(id!==UI.view&&askLeave(()=>navTo(id)))break;navTo(id);break;
+   case 'askyes':{const f=askFn;askFn=null;UI.modal=null;if(f)f();render();break}
    case 'more':UI.modal={type:'more'};render();break;
    case 'theme':{const cur=document.documentElement.dataset.theme;const dark=cur?cur==='dark':matchMedia('(prefers-color-scheme: dark)').matches;document.documentElement.dataset.theme=dark?'light':'dark';break}
    case 'bell':UI.pop=!UI.pop;render();break;
-   case 'logout':api('POST','/api/logout').catch(()=>{}).then(()=>{S=blank();lastSnap='';UI.auth='login';UI.hist=[];UI.pay=null;UI.pop=false;UI.modal=null;UI.draft=null;UI.view='home';render()});break;
+   case 'logout':{const u=unsaved();ask('Log out?',u?'You will be signed out. The unfinished work on this screen will be discarded.':'You will be signed out of this app.','Yes, log out',doLogout,{keep:'No, stay signed in'});break}
    case 'branch':UI.draft.branch=id;UI.draft.step=2;render();break;
    case 'step':UI.draft.step=Number(id);if(UI.draft.step===3)openTray();else render();break;
    case 'pickcust':UI.draft.cust=id;UI.draft.step=3;UI.draft.tin='';openTray();break;
@@ -1259,7 +1280,7 @@ document.addEventListener('click',e=>{
    case 'cartdrop':{UI.cartOpen=!UI.cartOpen;hideKb();['cdrop','cdbk'].forEach(k=>{const e=document.getElementById(k);if(e)e.classList.toggle('open',UI.cartOpen)});break}
    case 'pinc':{const l=UI.draft.lines.find(x=>x.code===id);if(l)l.qty++;else if(UI.draft.zoom===id)UI.draft.lines.push({code:id,qty:1});zoomSync(id);render();zoomFocus(id);break}
    case 'pdec':{const i=UI.draft.lines.findIndex(x=>x.code===id);if(i>=0){UI.draft.lines[i].qty--;if(UI.draft.lines[i].qty<=0)UI.draft.lines.splice(i,1)}zoomSync(id);render();zoomFocus(id);break}
-   case 'clearcart':UI.draft.lines=[];render();break;
+   case 'clearcart':ask('Remove all products?','Every product added to this order so far will be removed.','Yes, remove all',()=>{UI.draft.lines=[]},{keep:'No, keep them'});break;
    case 'opencart':UI.modal={type:'cart'};render();break;
    case 'create':{if(!UI.draft.lines.length)break;const d=UI.draft;act(async()=>{const oid=await newOrder(d);UI.draft=null;UI.view='pending';UI.hist=[];UI.modal={type:'receipt',id:oid,title:'Order created'};render();if(S.set.autoPrint)setTimeout(()=>printOrder(oid),350)});break}
    case 'savechg':{const d=UI.draft,idd=d.orderId;act(async()=>{await saveOrder(d);UI.draft=null;UI.view='pending';UI.modal={type:'receipt',id:idd,title:'Order updated'};render();if(S.set.autoPrint)setTimeout(()=>printOrder(idd),350)});break}
@@ -1297,7 +1318,7 @@ document.addEventListener('click',e=>{
    case 'retry':act(()=>retryQueue(false),queueMsg);break;
    case 'retryfailed':act(()=>retryQueue(true),queueMsg);break;
    case 'odootest':act(async()=>{const r=await api('POST','/api/admin/odoo/test');UI.sel.adminMsg=(r.ok?'Connected. ':'STOP: ')+'Odoo company: '+r.companies.join(', ')+(r.expected?(r.ok?' (as expected)':' - expected '+r.expected):'');return r});break;
-   case 'odoobal':{if(!confirm('Load every customer\'s current Odoo balance as the starting balance?'))break;act(async()=>{const r=await api('POST','/api/admin/odoo/balances',{});UI.sel.adminMsg='Loaded '+r.matched+' customers, total SAR '+nf.format(r.total)+'.'+(r.unmatchedOdoo.length?' In Odoo but not in the app: '+r.unmatchedOdoo.map(x=>x.name+' '+nf.format(x.balance)).join(', ')+'.':'')+(r.appCustomersWithoutOdooBalance.length?' In the app without Odoo balance (set to 0): '+r.appCustomersWithoutOdooBalance.join(', ')+'.':'');return r});break}
+   case 'odoobal':ask('Load starting balances?','Every customer\'s current Odoo balance becomes the starting balance in this app.','Yes, load them',()=>act(async()=>{const r=await api('POST','/api/admin/odoo/balances',{});UI.sel.adminMsg='Loaded '+r.matched+' customers, total SAR '+nf.format(r.total)+'.'+(r.unmatchedOdoo.length?' In Odoo but not in the app: '+r.unmatchedOdoo.map(x=>x.name+' '+nf.format(x.balance)).join(', ')+'.':'')+(r.appCustomersWithoutOdooBalance.length?' In the app without Odoo balance (set to 0): '+r.appCustomersWithoutOdooBalance.join(', ')+'.':'');return r}),{keep:'No, cancel'});break
    case 'odonum':act(async()=>{const r=await api('POST','/api/admin/odoo/numbers');UI.sel.adminMsg='Next numbers: order '+r.ord.next+' (Odoo last '+r.ord.last+'), payment '+r.pay.next+' (last '+r.pay.last+'), credit note '+r.cn.next+' (last '+r.cn.last+').';return r});break;
    case 'usernew':UI.modal={type:'user',id:null};render();break;
    case 'useredit':UI.modal={type:'user',id:Number(id)};render();break;
@@ -1309,13 +1330,13 @@ document.addEventListener('click',e=>{
    case 'doxfer':{const m=UI.modal;const from=m.from||S.set.branches[0];const to=S.set.branches.find(x=>x!==from);const q=parseInt(m.qty,10)||0;const note=($('#xn')||{}).value||'';
      act(async()=>{const r=await api('POST','/api/trays/transfer',{from,to,qty:q,note});UI.modal=null;return r},r=>r.ref+': '+nf0.format(q)+' trays moved from '+from+' to '+to);break}
    case 'otcancel':UI.sel.otPrev=null;UI.sel.otRows=null;render();break;
-   case 'otapply':act(async()=>{const r=await api('POST','/api/admin/trays/customers-bulk',{rows:UI.sel.otRows,zeroOthers:UI.sel.otZero!==false});UI.sel.otPrev=null;UI.sel.otRows=null;return r},r=>'Opening trays saved. '+r.changes+' customer'+(r.changes===1?'':'s')+' changed.');break;
+   case 'otapply':ask('Apply this trays file?',UI.sel.otZero!==false?'The opening trays of the customers in the file are replaced. Customers that are not in the file are set to 0.':'The opening trays of the customers in the file are replaced.','Yes, apply it',()=>act(async()=>{const r=await api('POST','/api/admin/trays/customers-bulk',{rows:UI.sel.otRows,zeroOthers:UI.sel.otZero!==false});UI.sel.otPrev=null;UI.sel.otRows=null;return r},r=>'Opening trays saved. '+r.changes+' customer'+(r.changes===1?'':'s')+' changed.'),{keep:'No, cancel'});break;
    case 'checkkey':act(()=>api('POST','/api/admin/users/'+id+'/check-key'),r=>r.ok?'Key works with Odoo'+(r.note?'. '+r.note:''):'Key failed: '+r.note);break;
    case 'readiness':act(()=>api('POST','/api/admin/odoo/readiness'),r=>r.ok?'Odoo is ready. All checks passed.':r.failed+' problem'+(r.failed>1?'s':'')+' found. See the list.');break;
    case 'reconcile':act(()=>api('POST','/api/admin/odoo/reconcile'),r=>r.ok?'All '+r.checked+' customers match Odoo.':r.differences+' customer'+(r.differences===1?'':'s')+' differ from Odoo. See the list.');break;
    case 'adm':UI.hist.push(UI.view);UI.view='admin';UI.tab.admin=id;UI.sel.admCust=null;UI.modal=null;render();break;
    case 'admcustgo':UI.hist.push(UI.view);UI.view='admin';UI.tab.admin='custs';UI.sel.admCust=id;UI.q.prList='';render();break;
-   case 'custactive':{const c=cust(id);act(()=>api('PUT','/api/admin/customers/'+encodeURIComponent(id),{active:!c.active}),c.active?c.name+' is switched off. Hidden from new orders.':c.name+' is switched on.');break}
+   case 'custactive':{const c=cust(id);ask(c.active?'Switch off '+c.name+'?':'Switch on '+c.name+'?',c.active?'They will be hidden from new orders. Their history stays.':'They will show again in new orders.',c.active?'Yes, switch off':'Yes, switch on',()=>act(()=>api('PUT','/api/admin/customers/'+encodeURIComponent(id),{active:!c.active}),c.active?c.name+' is switched off. Hidden from new orders.':c.name+' is switched on.'),{keep:'No, leave it'});break}
   }
 });
 let formSnap={};
