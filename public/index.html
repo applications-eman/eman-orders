@@ -328,6 +328,10 @@ tbody tr{transition:background .12s}tbody tr:hover td{background:color-mix(in sr
   .tabbar button{border:0;background:none;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:11px;font-weight:700;color:var(--muted);position:relative}
   .tabbar button.on{color:var(--brand)}.tabbar button[disabled]{opacity:.35}
   .tabbar .bdg{position:absolute;top:6px;left:calc(50% + 8px)}
+  .tabbar .tabnew{overflow:visible;gap:3px}
+  .tabbar .tabnew i{width:58px;height:58px;margin-top:-28px;border-radius:50%;display:grid;place-items:center;color:var(--brand-ink);border:3px solid var(--surface);background:radial-gradient(circle at 34% 24%,color-mix(in srgb,var(--brand) 62%,#fff) 0,var(--brand) 58%,color-mix(in srgb,var(--brand) 78%,#000) 100%);box-shadow:0 7px 12px rgba(0,0,0,.3),0 2px 3px rgba(0,0,0,.22),inset 0 2px 1px rgba(255,255,255,.42),inset 0 -4px 5px rgba(0,0,0,.26);transition:transform .1s,box-shadow .1s}
+  .tabbar .tabnew:active i{transform:translateY(2px) scale(.96);box-shadow:0 3px 6px rgba(0,0,0,.3),inset 0 2px 1px rgba(255,255,255,.3),inset 0 -2px 3px rgba(0,0,0,.26)}
+  .tabbar .tabnew.on{color:var(--brand)}
   .cartbar{bottom:calc(var(--tab-h) + 12px + env(safe-area-inset-bottom,0px))}
   .prods{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
   .pt{padding:11px;min-height:134px}
@@ -338,8 +342,9 @@ tbody tr{transition:background .12s}tbody tr:hover td{background:color-mix(in sr
 }
 /* ===== phone and app-like behaviour (no zoom, no sideways movement, no rubber band) ===== */
 html{-webkit-text-size-adjust:100%;text-size-adjust:100%;overscroll-behavior:none;touch-action:manipulation}
-html,body{margin:0;padding:0;position:fixed;inset:0;width:100%;height:100%;overflow:hidden;overscroll-behavior:none}
-@supports (height:100dvh){html,body{height:100dvh}}
+html,body{margin:0;padding:0;position:fixed;inset:0;width:100%;overflow:hidden;overscroll-behavior:none}
+/* iPhone home-screen app: when the page ends short of the real bottom, stretch the body to the full screen (fixed parts then follow it) */
+html.fixgap body{bottom:auto;height:var(--sh);transform:translateZ(0)}
 body{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
 input,select,textarea,.dst,.rcpt{-webkit-user-select:text;user-select:text}
 input,select,textarea{font-size:16px}
@@ -573,8 +578,8 @@ function shell(inner){
   const u=me();const lock=overdue().length>0;const pn=pending().length;
   const navs=NAV.filter(n=>n[3]());
   const nb=navs.map(n=>{const dis=lock&&n[0]!=='pending'?'disabled':'';return `<button data-act="nav" data-id="${n[0]}" class="${UI.view===n[0]?'on':''}" ${dis} title="${n[1]}">${ic(n[2])}<span class="lb">${n[1]}</span>${n[0]==='pending'&&pn?`<span class="bdg">${pn}</span>`:''}</button>`}).join('');
-  const tabs=['home','new','pending','payments'].map(k=>navs.find(n=>n[0]===k)).filter(Boolean);
-  const tb=tabs.map(n=>{const dis=lock&&n[0]!=='pending'?'disabled':'';return `<button data-act="nav" data-id="${n[0]}" class="${UI.view===n[0]?'on':''}" ${dis}>${ic(n[2],22)}${n[1].replace('New order','New')}${n[0]==='pending'&&pn?`<span class="bdg">${pn}</span>`:''}</button>`}).join('')+`<button data-act="more" class="${UI.more?'on':''}">${ic('more',22)}More</button>`;
+  const tabs=['home','pending','new','payments'].map(k=>navs.find(n=>n[0]===k)).filter(Boolean);
+  const tb=tabs.map(n=>{const dis=lock&&n[0]!=='pending'?'disabled':'';if(n[0]==='new')return `<button data-act="nav" data-id="new" class="tabnew ${UI.view==='new'?'on':''}" ${dis} aria-label="New order"><i>${ic('plus',28)}</i>New</button>`;return `<button data-act="nav" data-id="${n[0]}" class="${UI.view===n[0]?'on':''}" ${dis}>${ic(n[2],22)}${n[1].replace('New order','New')}${n[0]==='pending'&&pn?`<span class="bdg">${pn}</span>`:''}</button>`}).join('')+`<button data-act="more" class="${UI.more?'on':''}">${ic('more',22)}More</button>`;
   return `<div class="shell"><aside class="side"><div class="brand"><div class="logo">E</div><div><b>Eman Bakery</b><small>Orders &amp; trays</small></div></div><nav class="nav">${nb}</nav>
   <div class="who"><div class="av">${esc(u.name[0])}</div><div><b>${esc(u.name)}</b><small>${u.admin?'Administrator':'Staff'}</small></div></div></aside>
   <div class="main"><header class="top">${UI.view!=='home'?`<button class="iconbtn flip" data-act="back" aria-label="Back" style="margin-right:2px">${ic('chev',22)}</button>`:''}<h1>${TITLES[UI.view]||''}</h1>${UI.view==='new'&&UI.draft&&UI.draft.step===4?`<button class="iconbtn cartbtn" data-act="cartdrop" aria-label="Order so far">${ic('cart',22)}${UI.draft.lines.length?`<span class="bdg">${UI.draft.lines.reduce((a,l)=>a+l.qty,0)}</span>`:''}</button>`:''}<button class="iconbtn" data-act="theme" aria-label="Switch theme">${ic('theme')}</button><button class="iconbtn" data-act="bell" aria-label="Pending orders">${ic('bell')}${pn?`<span class="bdg" id="bellc">${pn}</span>`:''}</button><button class="iconbtn" data-act="logout" aria-label="Sign out">${ic('logout')}</button></header>
@@ -1211,6 +1216,13 @@ function unsaved(){
 function askLeave(then){const u=unsaved();if(!u)return false;ask(u.title,u.text,u.yes,()=>{u.discard();then()},{keep:u.keep});return true}
 function navTo(id){if(id!==UI.view){UI.hist.push(UI.view);if(UI.hist.length>25)UI.hist.shift()}UI.view=id;UI.more=false;UI.modal=null;UI.pop=false;if(id==='new'&&!UI.draft)startDraft();if(id!=='admin')UI.sel.admCust=null;render()}
 function doLogout(){api('POST','/api/logout').catch(()=>{}).then(()=>{S=blank();lastSnap='';UI.auth='login';UI.hist=[];UI.pay=null;UI.pop=false;UI.modal=null;UI.draft=null;UI.cartOpen=false;UI.view='home';render()})}
+function fitScreen(){
+  const de=document.documentElement;
+  const standalone=navigator.standalone===true||matchMedia('(display-mode: standalone)').matches;
+  const sh=Math.max(screen.height,screen.width);const gap=sh-innerHeight;
+  if(standalone&&innerHeight>innerWidth&&innerWidth<=760&&gap>8&&gap<150){de.style.setProperty('--sh',sh+'px');de.classList.add('fixgap')}
+  else{de.classList.remove('fixgap');de.style.removeProperty('--sh')}
+}
 function phone(){return innerWidth<=760}
 function hideKb(){const a=document.activeElement;if(a&&a.blur){if(a.tagName==='INPUT')a.setAttribute('readonly','');a.blur()}}
 function qtyApply(id,raw){
@@ -1456,6 +1468,7 @@ document.addEventListener('keydown',e=>{
   try{PUB=await (await fetch('/api/public')).json()}catch(x){}
   try{await refresh()}catch(x){S=blank()}
   if(!S)S=blank();
+  fitScreen();['resize','orientationchange','pageshow'].forEach(e=>addEventListener(e,()=>setTimeout(fitScreen,60)));
   render();setInterval(tick,1000);
   const poll=()=>{if(S&&S.session&&!UI.busy&&!(UI.modal&&UI.modal.type==='progress')&&document.visibilityState==='visible')refresh(true).then(ch=>{if(ch)render()}).catch(()=>{})};
   setInterval(poll,15000);
