@@ -71,3 +71,8 @@ DATABASE_URL=postgresql://user@localhost/emantest PGSSL=off npm test
 ```
 
 Technical rules are in `CLAUDE.md`. Known limits: the screens load all orders into the browser (fine for the first months; add date windows later), one server instance only.
+
+## Roadmap
+
+- **Now:** switch-over (final delta import from 15 Oct, balance comparison per customer, then start using the app).
+- **Phase 2 (after the switch-over, once balances and money side are stable):** fluid responsive architecture (rem/clamp units, container queries, one adaptive navigation, tablet layout fixed). Scope of work and screen list: `docs/PHASE2_FLUID_RWD.md`.

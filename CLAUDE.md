@@ -16,3 +16,4 @@ Read handover/HANDOVER.md first.
 - Secrets only as Replit/environment secrets: APP_SECRET, ADMIN_PASSWORD, ODOO_URL, ODOO_DB, ODOO_EXPECT_COMPANY, per-user Odoo API keys (stored encrypted in the database via the admin console).
 - Day statement lists invoices and credit notes only (no payments).
 - Still to do: final delta import (11 Oct onward) on switch-over day; replicate Odoo setup to LIVE only after an explicit "go".
+- Phase 2 (planned, starts only after the switch-over and a stable balance/money side, and an explicit "go"): fluid responsive architecture, scope in docs/PHASE2_FLUID_RWD.md. Until then only small layout fixes on request.
