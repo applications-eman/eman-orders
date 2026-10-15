@@ -328,6 +328,7 @@ tbody tr{transition:background .12s}tbody tr:hover td{background:color-mix(in sr
   .tabbar button{border:0;background:none;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:11px;font-weight:700;color:var(--muted);position:relative}
   .tabbar button.on{color:var(--brand)}.tabbar button[disabled]{opacity:.35}
   .tabbar .bdg{position:absolute;top:6px;left:calc(50% + 8px)}
+  html.hasgap .tabbar{--sab:max(0px,calc(env(safe-area-inset-bottom,0px) - var(--gap,0px)));height:calc(var(--tab-h) + var(--sab));padding-bottom:var(--sab)}
   .tabbar .tabnew{overflow:visible;gap:3px}
   .tabbar .tabnew i{width:58px;height:58px;margin-top:-28px;border-radius:50%;display:grid;place-items:center;color:var(--brand-ink);border:3px solid var(--surface);background:radial-gradient(circle at 34% 24%,color-mix(in srgb,var(--brand) 62%,#fff) 0,var(--brand) 58%,color-mix(in srgb,var(--brand) 78%,#000) 100%);box-shadow:0 7px 12px rgba(0,0,0,.3),0 2px 3px rgba(0,0,0,.22),inset 0 2px 1px rgba(255,255,255,.42),inset 0 -4px 5px rgba(0,0,0,.26);transition:transform .1s,box-shadow .1s}
   .tabbar .tabnew:active i{transform:translateY(2px) scale(.96);box-shadow:0 3px 6px rgba(0,0,0,.3),inset 0 2px 1px rgba(255,255,255,.3),inset 0 -2px 3px rgba(0,0,0,.26)}
@@ -343,8 +344,9 @@ tbody tr{transition:background .12s}tbody tr:hover td{background:color-mix(in sr
 /* ===== phone and app-like behaviour (no zoom, no sideways movement, no rubber band) ===== */
 html{-webkit-text-size-adjust:100%;text-size-adjust:100%;overscroll-behavior:none;touch-action:manipulation}
 html,body{margin:0;padding:0;position:fixed;inset:0;width:100%;overflow:hidden;overscroll-behavior:none}
-/* iPhone home-screen app: when the page ends short of the real bottom, stretch the body to the full screen (fixed parts then follow it) */
-html.fixgap body{bottom:auto;height:var(--sh);transform:translateZ(0)}
+/* iPhone home-screen app: the window can end short of the real screen bottom and nothing can be drawn below that line.
+   Colour the empty strip like the bottom bar so they look like one bar, and do not add the safe-area space twice. */
+html.hasgap{background:var(--surface)}
 body{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
 input,select,textarea,.dst,.rcpt{-webkit-user-select:text;user-select:text}
 input,select,textarea{font-size:16px}
@@ -1219,9 +1221,9 @@ function doLogout(){api('POST','/api/logout').catch(()=>{}).then(()=>{S=blank();
 function fitScreen(){
   const de=document.documentElement;
   const standalone=navigator.standalone===true||matchMedia('(display-mode: standalone)').matches;
-  const sh=Math.max(screen.height,screen.width);const gap=sh-innerHeight;
-  if(standalone&&innerHeight>innerWidth&&innerWidth<=760&&gap>8&&gap<150){de.style.setProperty('--sh',sh+'px');de.classList.add('fixgap')}
-  else{de.classList.remove('fixgap');de.style.removeProperty('--sh')}
+  const gap=Math.max(screen.height,screen.width)-innerHeight;
+  if(standalone&&innerHeight>innerWidth&&innerWidth<=760&&gap>8&&gap<150){de.style.setProperty('--gap',gap+'px');de.classList.add('hasgap')}
+  else{de.classList.remove('hasgap');de.style.removeProperty('--gap')}
 }
 function phone(){return innerWidth<=760}
 function hideKb(){const a=document.activeElement;if(a&&a.blur){if(a.tagName==='INPUT')a.setAttribute('readonly','');a.blur()}}
