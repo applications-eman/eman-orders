@@ -139,7 +139,10 @@ let checks = 0;
       // plus and minus still work
       await click('.pt [data-act="pinc"]'); await click('.pt [data-act="pinc"]'); await click('.pt [data-act="pdec"]');
       await pg.waitForFunction(() => document.querySelector('.pt [data-qty]').value === '5', null, { timeout: 4000 });
-      await pg.keyboard.press('Escape');
+      // explicit Add button (phones may have no Enter key on the number pad)
+      await click('.pt .pt-name'); await pg.waitForSelector('.pt.zoom .zadd', { timeout: 3000 });
+      await pg.keyboard.type('7'); await click('.pt.zoom .zadd');
+      await pg.waitForFunction(() => !document.querySelector('.pt.zoom') && document.querySelector('.pt [data-qty]').value === '7', null, { timeout: 4000 });
       await shot('picker'); await layout('picker with items');
     });
     await step('new order: cart and create', async () => {

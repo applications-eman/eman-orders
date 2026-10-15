@@ -266,7 +266,10 @@ tbody tr{transition:background .12s}tbody tr:hover td{background:color-mix(in sr
 .pt:hover{transform:translateY(-2px);box-shadow:var(--shadow)}.pt:active{transform:scale(.985)}
 .pt::before{content:"";position:absolute;left:0;top:14px;bottom:14px;width:4px;border-radius:0 4px 4px 0;background:var(--accent)}
 .pt.on::before{background:var(--brand)}
-.pt.zoom,.pt.zoom:hover{transform:scale(1.1);z-index:6;border-color:var(--brand);box-shadow:0 14px 34px rgba(0,0,0,.22);transition:transform .16s ease-out,box-shadow .16s ease-out}
+.pt.zoom,.pt.zoom:hover{transform:scale(1.25);z-index:6;border-color:var(--brand);box-shadow:0 14px 34px rgba(0,0,0,.22);transition:transform .16s ease-out,box-shadow .16s ease-out}
+@media (max-width:760px){.pt.zoom,.pt.zoom:hover{transform:scale(1.18)}}
+.zadd{display:none;position:absolute;left:0;right:0;top:calc(100% + 8px);height:46px;border-radius:14px;font-weight:800;gap:6px;align-items:center;justify-content:center}
+.pt.zoom .zadd{display:flex}
 @media (prefers-reduced-motion:reduce){.pt,.pt.zoom{transition:none}}
 .pt-name{padding-left:4px}
 .pt-meta{padding-left:4px}.pt-foot{padding-left:4px}
@@ -670,7 +673,7 @@ function vPick(d){
     const z=d.zoom===p.code;
     return `<div class="pt ${q?'on':''} ${z?'zoom':''}" data-act="padd" data-id="${p.code}" tabindex="0" role="button" aria-label="Add ${esc(p.name)}"><div class="pt-name">${esc(p.name)}</div><div class="pt-meta">${p.ppp} pcs per packet</div>
     <div class="pt-foot"><div><span class="price num">${nf.format(pr.v)}</span> ${pr.custom?'<span class="tagc">Custom</span>':''}</div></div>
-    <div class="stepper" style="${q||z?'':'visibility:hidden'}"><button data-act="pdec" data-id="${p.code}" aria-label="Less">${ic('minus',18)}</button><input inputmode="numeric" ${z?'id="zq" placeholder="Qty"':''} data-qty="${p.code}" value="${z?esc(d.zval||''):q}" aria-label="Quantity"><button data-act="pinc" data-id="${p.code}" aria-label="More">${ic('plus',18)}</button></div></div>`}).join('');
+    <div class="stepper" style="${q||z?'':'visibility:hidden'}"><button data-act="pdec" data-id="${p.code}" aria-label="Less">${ic('minus',18)}</button><input inputmode="numeric" enterkeyhint="done" ${z?'id="zq" placeholder="Qty"':''} data-qty="${p.code}" value="${z?esc(d.zval||''):q}" aria-label="Quantity"><button data-act="pinc" data-id="${p.code}" aria-label="More">${ic('plus',18)}</button></div><button class="btn pri zadd" data-act="zadd">${ic('check',18)} Add to order</button></div>`}).join('');
   const pcsRow=sizes.length>1?`<div><div class="pkh"><i>2</i> Pieces per packet</div><div class="pcsrow" style="margin-top:8px">${sizes.map(n=>`<button class="pcsb ${d.pcs===n?'on':''}" data-act="pcs" data-id="${n}"><b>${n}</b><small>${inC.filter(p=>p.ppp===n).length} item${inC.filter(p=>p.ppp===n).length>1?'s':''}</small></button>`).join('')}</div></div>`:'';
   const c=cust(d.cust);
   let body;
@@ -1170,8 +1173,10 @@ function zoomOn(id,tile){
   const d=UI.draft;if(d.zoom===id){zoomFocus(id);return}
   zoomOff();d.zoom=id;const l=d.lines.find(x=>x.code===id);d.zval=l?String(l.qty):'';
   if(!tile)return render();
+  try{const r=tile.getBoundingClientRect(),c=($('#content')||document.body).getBoundingClientRect();tile.style.transformOrigin=r.left-c.left<30?'left center':c.right-r.right<30?'right center':'center'}catch(x){}
   tile.classList.add('zoom');const st=tile.querySelector('.stepper');if(st)st.style.visibility='visible';
   const q=tile.querySelector('[data-qty]');if(q){q.id='zq';q.placeholder='Qty';q.value=d.zval;q.focus();q.select()}
+  if(innerWidth<=760)try{tile.scrollIntoView({block:'center',behavior:'smooth'})}catch(x){}
 }
 function zoomEnter(){
   const d=UI.draft,id=d.zoom;if(!id)return;
@@ -1216,6 +1221,7 @@ document.addEventListener('click',e=>{
    case 'catopen':UI.draft.catOpen=true;render();break;
    case 'pcs':UI.draft.zoom=null;UI.draft.pcs=Number(id);render();break;
    case 'padd':zoomOn(id,t);break
+   case 'zadd':zoomEnter();break
    case 'pinc':{const l=UI.draft.lines.find(x=>x.code===id);if(l)l.qty++;else if(UI.draft.zoom===id)UI.draft.lines.push({code:id,qty:1});zoomSync(id);render();zoomFocus(id);break}
    case 'pdec':{const i=UI.draft.lines.findIndex(x=>x.code===id);if(i>=0){UI.draft.lines[i].qty--;if(UI.draft.lines[i].qty<=0)UI.draft.lines.splice(i,1)}zoomSync(id);render();zoomFocus(id);break}
    case 'clearcart':UI.draft.lines=[];render();break;
