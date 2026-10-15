@@ -78,7 +78,9 @@ async function api(method, p, body, cookie) {
     const pcs = await pg.$('[data-act="pcs"]');
     if (pcs) await pcs.click();
     await pg.click('[data-act="padd"]');
-    await pg.click('[data-act="padd"]');
+    await pg.keyboard.type('2');
+    await pg.keyboard.press('Enter');
+    await pg.waitForFunction(() => !document.querySelector('.pt.zoom') && document.querySelector('.pt [data-qty]').value === '2' && document.querySelector('[data-act="create"]:not([disabled])'));
     await pg.screenshot({ path: `${out}/${name}_picker.png` });
     await pg.evaluate(() => document.querySelector('[data-act="create"]').click());
     await pg.waitForSelector('.modal');

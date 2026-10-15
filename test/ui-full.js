@@ -131,8 +131,15 @@ let checks = 0;
       await cats[cats.length > 1 ? 1 : 0].click();
       const pcs = await pg.$$('[data-act="pcs"]'); if (pcs.length) await pcs[0].click();
       await pg.waitForSelector('.pt', { timeout: 4000 });
-      await click('.pt[data-act="padd"]'); await click('.pt [data-act="pinc"]'); await click('.pt [data-act="pinc"]'); await click('.pt [data-act="pdec"]');
-      await pg.fill('.pt [data-qty]', '4'); await pg.keyboard.press('Tab');
+      // tap a card: it zooms and the cursor is already in its quantity box; type, Enter, card returns
+      await click('.pt[data-act="padd"]');
+      if (!(await pg.evaluate(() => document.activeElement && document.activeElement.id === 'zq' && !!document.querySelector('.pt.zoom')))) throw new Error('card did not zoom with the quantity box focused');
+      await pg.keyboard.type('4x'); await pg.keyboard.press('Enter');
+      await pg.waitForFunction(() => !document.querySelector('.pt.zoom') && document.querySelector('.pt.on [data-qty]') && document.querySelector('.pt [data-qty]').value === '4', null, { timeout: 4000 });
+      // plus and minus still work
+      await click('.pt [data-act="pinc"]'); await click('.pt [data-act="pinc"]'); await click('.pt [data-act="pdec"]');
+      await pg.waitForFunction(() => document.querySelector('.pt [data-qty]').value === '5', null, { timeout: 4000 });
+      await pg.keyboard.press('Escape');
       await shot('picker'); await layout('picker with items');
     });
     await step('new order: cart and create', async () => {
@@ -149,7 +156,8 @@ let checks = 0;
     await step('pending: cancel an order', async () => {
       await nav('new'); await click('[data-act="branch"][data-id="Hira Branch"]'); await click('[data-act="pickcust"]'); await pg.waitForSelector('#tiq'); await click('[data-act="tinzero"]');
       const cats = await pg.$$('.catgrid [data-act="cat"]'); await cats[0].click(); const pcs = await pg.$$('[data-act="pcs"]'); if (pcs.length) await pcs[0].click();
-      await click('.pt[data-act="padd"]');
+      await click('.pt[data-act="padd"]'); await pg.keyboard.press('Enter'); // Enter on an empty box adds one packet
+      await pg.waitForSelector('[data-act="create"]:not([disabled])', { state: 'attached', timeout: 4000 });
       if (w < 1100) { await click('[data-act="opencart"]'); await click('.modal [data-act="create"]'); } else await click('.cart [data-act="create"]');
       await click('.modal button[data-act="closemodal"]'); await nav('pending');
       const n = (await pg.$$('[data-act="cancelord"]')).length;
