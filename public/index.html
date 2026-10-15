@@ -1039,7 +1039,7 @@ function vModal(){
   }
   if(m.type==='more'){
     const navs=NAV.filter(n=>n[3]()&&!['home','new','pending','payments'].includes(n[0]));
-    return `<div class="mask sheet" data-act="closemodal" data-bg="1"><div class="modal" role="dialog" aria-modal="true"><h2>More</h2><div class="list">${navs.map(n=>`<button class="li" data-act="nav" data-id="${n[0]}">${ic(n[2],22)}<div class="grow"><b>${n[1]}</b></div>${ic('chev',18)}</button>`).join('')}<div class="li" style="align-items:flex-start">${ic('home',22)}<div class="grow"><b>Install on this phone</b><small style="white-space:normal">iPhone: Share, then Add to Home Screen. Android: menu, then Install app. It opens full screen like a native app.</small></div></div></div></div></div>`;
+    return `<div class="mask sheet" data-act="closemodal" data-bg="1"><div class="modal" role="dialog" aria-modal="true"><h2>More</h2><div class="list">${navs.map(n=>`<button class="li" data-act="nav" data-id="${n[0]}">${ic(n[2],22)}<div class="grow"><b>${n[1]}</b></div>${ic('chev',18)}</button>`).join('')}<div class="li" style="align-items:flex-start">${ic('home',22)}<div class="grow"><b>Install on this phone</b><small style="white-space:normal">iPhone: Share, then Add to Home Screen. Android: menu, then Install app. It opens full screen like a native app.</small></div></div>${diagHtml()}</div></div></div>`;
   }
   return '';
 }
@@ -1218,6 +1218,15 @@ function unsaved(){
 function askLeave(then){const u=unsaved();if(!u)return false;ask(u.title,u.text,u.yes,()=>{u.discard();then()},{keep:u.keep});return true}
 function navTo(id){if(id!==UI.view){UI.hist.push(UI.view);if(UI.hist.length>25)UI.hist.shift()}UI.view=id;UI.more=false;UI.modal=null;UI.pop=false;if(id==='new'&&!UI.draft)startDraft();if(id!=='admin')UI.sel.admCust=null;render()}
 function doLogout(){api('POST','/api/logout').catch(()=>{}).then(()=>{S=blank();lastSnap='';UI.auth='login';UI.hist=[];UI.pay=null;UI.pop=false;UI.modal=null;UI.draft=null;UI.cartOpen=false;UI.view='home';render()})}
+function diagHtml(){
+  try{
+    const t=document.createElement('div');t.style.cssText='position:fixed;left:0;top:0;width:0;height:0;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)';document.body.appendChild(t);
+    const cs=getComputedStyle(t),st=cs.paddingTop,sb=cs.paddingBottom;t.remove();
+    const vv=window.visualViewport,tb=$('.tabbar'),bb=tb?Math.round(tb.getBoundingClientRect().bottom):'-';
+    const x=[`app mode: ${navigator.standalone===true||matchMedia('(display-mode: standalone)').matches?'home screen':'browser'}`,`page: ${innerWidth} x ${innerHeight}`,`screen: ${screen.width} x ${screen.height}`,`visual: ${vv?Math.round(vv.width)+' x '+Math.round(vv.height):'-'}`,`safe top ${st}, bottom ${sb}`,`bar bottom edge: ${bb}`,`gap fix: ${document.documentElement.classList.contains('hasgap')?'on':'off'}`];
+    return `<p class="muted" style="font-size:12px;margin:14px 0 0;white-space:normal">Screen info: ${x.join(' · ')}</p>`;
+  }catch(e){return ''}
+}
 function fitScreen(){
   const de=document.documentElement;
   const standalone=navigator.standalone===true||matchMedia('(display-mode: standalone)').matches;
