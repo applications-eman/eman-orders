@@ -19,6 +19,7 @@ const assert = require('assert');
 const { createMock } = require('./mock-odoo');
 
 const base = 'http://127.0.0.1:54701';
+const ryToday = () => new Date(Date.now() + 3 * 3600 * 1000).toISOString().slice(0, 10);
 let pass = 0;
 const ok = (name, fn) => fn().then(() => { pass++; console.log('  ok  ' + name); }, e => { console.error('FAIL ' + name + '\n     ' + (e && e.message || e)); process.exitCode = 1; });
 
@@ -264,7 +265,7 @@ const login = async (email, password) => (await call('POST', '/api/login', { ema
       assert.equal(f.body.odoo, 'queued');
       ids.push(c.body.id);
     }
-    const p = await call('POST', '/api/payments', { method: 'Cash', date: '2026-10-12', total: 5, lines: [{ cc: 'SLM-003', amount: 5 }] }, sidheek);
+    const p = await call('POST', '/api/payments', { method: 'Cash', date: ryToday(), total: 5, lines: [{ cc: 'SLM-003', amount: 5 }] }, sidheek);
     assert.equal(p.status, 200);
     M.down = false;
     const r = await call('POST', '/api/sync/retry', {}, sidheek);
@@ -311,8 +312,15 @@ const login = async (email, password) => (await call('POST', '/api/login', { ema
     assert.equal(pay.createdBy, 'Sidheek');
     assert(M.calls.some(c => c.reconcile), 'matching was requested');
   });
+  await ok('cash: one customer only, and only with today\'s date (transfers stay flexible)', async () => {
+    const two = await call('POST', '/api/payments', { method: 'Cash', date: ryToday(), total: 100, lines: [{ cc: 'SLM-001', amount: 60 }, { cc: 'SLM-002', amount: 40 }] }, sidheek);
+    assert.equal(two.status, 400); assert(/one customer/i.test(two.body.error || JSON.stringify(two.body)));
+    const old = await call('POST', '/api/payments', { method: 'Cash', date: '2026-10-12', total: 10, lines: [{ cc: 'SLM-001', amount: 10 }] }, sidheek);
+    assert.equal(old.status, 400); assert(/today/i.test(old.body.error || JSON.stringify(old.body)));
+    // a backdated, split transfer is accepted: see the SAB bank split test above
+  });
   await ok('split must add up to the total', async () => {
-    const r = await call('POST', '/api/payments', { method: 'Cash', date: '2026-10-12', total: 100, lines: [{ cc: 'SLM-001', amount: 60 }, { cc: 'SLM-002', amount: 30 }] }, sidheek);
+    const r = await call('POST', '/api/payments', { method: 'SAB bank', date: '2026-10-12', total: 100, lines: [{ cc: 'SLM-001', amount: 60 }, { cc: 'SLM-002', amount: 30 }] }, sidheek);
     assert.equal(r.status, 400);
   });
   await ok('credit note is posted without rounding on the sales account', async () => {

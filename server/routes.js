@@ -238,6 +238,12 @@ router.post('/payments', need('payments'), wrap(async (req, res) => {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(b.date || '')) || isNaN(Date.parse(b.date))) throw new Bad('Enter a valid date.');
   const lines = Array.isArray(b.lines) ? b.lines : [];
   if (!lines.length || lines.length > 100) throw new Bad('Add at least one customer.');
+  if (b.method === 'Cash') {
+    // cash: one customer, always today's date (Jeddah day); transfers stay flexible
+    if (lines.length !== 1) throw new Bad('Cash is recorded for one customer only.');
+    const today = new Date(Date.now() + 3 * 3600 * 1000).toISOString().slice(0, 10);
+    if (b.date !== today) throw new Bad("A cash payment is always recorded with today's date.");
+  }
   const total = money(b.total, 'Total received');
   const amts = lines.map(l => money(l.amount, 'Amount'));
   if (amts.reduce((a, x) => a + x, 0) !== total) throw new Bad('The amounts must add up to the total received.');

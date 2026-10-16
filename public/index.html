@@ -413,6 +413,18 @@ body.busy::after{content:"";position:fixed;top:0;left:0;right:0;height:3px;z-ind
   .shell .content{overflow:visible}
   .top{position:sticky;top:0;z-index:29}
 }
+/* day statement: customer cards + sticky action bar */
+.dlist{display:grid;gap:10px}
+.dcard{display:flex;align-items:center;gap:12px;text-align:left;width:100%;background:var(--surface);border:2px solid var(--line);border-radius:16px;padding:14px 16px;min-height:64px;cursor:pointer;transition:border-color .15s,background .15s,transform .1s}
+.dcard:hover{border-color:color-mix(in srgb,var(--brand) 55%,var(--line))}.dcard:active{transform:scale(.99)}
+.dcard.on{border-color:var(--brand);background:var(--brand-soft)}
+.dcard .grow{flex:1;min-width:0}.dcard .grow b{display:block}.dcard small{display:block;color:var(--muted);font-size:12.5px}
+.dcr{text-align:right;white-space:nowrap}.dcr b{display:block}
+.dck{width:24px;height:24px;border-radius:50%;display:grid;place-items:center;border:2px solid var(--line);color:transparent;flex:none}
+.dcard.on .dck{background:var(--brand);border-color:var(--brand);color:var(--brand-ink)}
+.dayact{position:sticky;bottom:14px;z-index:5;display:flex;align-items:center;gap:10px;margin-top:14px;padding:12px 14px;background:var(--surface);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow2,var(--shadow))}
+.dayact .grow{flex:1;min-width:0}.dayact .grow b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.dayact small{color:var(--muted);font-size:12px}
+@media (max-width:760px){.dayact{bottom:calc(var(--tab-h) + var(--sabx) + 14px)}}
 </style>
 </head>
 <body>
@@ -550,7 +562,7 @@ const NAV=[
  ['sync','Odoo sync','sync',()=>can('sync_view')],
  ['admin','Admin console','shield',()=>me()&&me().admin]
 ];
-const TITLES={home:'Home',new:'New order',pending:'Pending orders',orders:'Orders',payments:'Receive payment',credit:'Credit note',daily:'Combined day statement',trays:'Tray ledger',customers:'Customers',sync:'Odoo sync',admin:'Admin console'};
+const TITLES={home:'Home',new:'New order',pending:'Pending orders',orders:'Orders',payments:'Receive payment',credit:'Credit note',daily:'Day statement',trays:'Tray ledger',customers:'Customers',sync:'Odoo sync',admin:'Admin console'};
 function cdSpan(o){const ms=o.deadline-now();return `<span class="cd ${cdClass(ms)}" data-dl="${o.deadline}">${cdText(ms)}</span>`}
 function orderTotalTxt(o){const T=totals(o.lines,o.cust,true);return sar(T.rounded*100)}
 function lockBanner(){const n=overdue().length;return n?`<div class="banner">${ic('clock')}<div>${n} order${n>1?'s are':' is'} past the finalize time. Finalize ${n>1?'them':'it'} to continue. Everything else is locked.</div></div>`:''}
@@ -761,10 +773,12 @@ function lPick(key){
   return l.length?l.map(c=>`<button class="li" data-act="selcust" data-grp="${key}" data-id="${c.code}"><div class="grow"><b>${esc(c.name)}</b></div><span class="num muted">${sar(balance(c))}</span></button>`).join(''):'<div class="empty">No match.</div>';
 }
 const METHODS=['Cash','SAB bank','Neoleap wallet','HALA bank','Kafeel Al Rajhi','Shaikhs bank'];
-function payState(){return UI.pay||(UI.pay={total:'',date:new Date(now()).toISOString().slice(0,10),note:'',lines:[]})}
+const ryToday=()=>new Date(now()+3*3600*1000).toISOString().slice(0,10);
+const isCash=()=>(UI.sel.method||'Cash')==='Cash';
+function payState(){return UI.pay||(UI.pay={total:'',date:ryToday(),note:'',lines:[]})}
 const pc=v=>toC(parseFloat(v)||0);
 function payCalc(){const P=payState();const tot=pc(P.total);const al=P.lines.reduce((a,l)=>a+pc(l.amt),0);return {tot,al,left:tot-al}}
-function payOk(){const c=payCalc();const P=payState();return c.tot>0&&P.lines.length>0&&c.left===0&&P.lines.every(l=>pc(l.amt)>0)}
+function payOk(){const c=payCalc();const P=payState();return c.tot>0&&P.lines.length>0&&(!isCash()||P.lines.length===1)&&c.left===0&&P.lines.every(l=>pc(l.amt)>0)}
 function payStat(){const c=payCalc();return c.tot<=0?['Enter the total amount received','']:c.left===0&&payState().lines.length?['Fully allocated. Ready to post','ok']:c.left>0?[sar(c.left)+' still to allocate','bad']:['Over by '+sar(-c.left)+'. Lower an amount','bad']}
 function updPay(){const s=payStat();const e=$('#paystat');if(e){e.textContent=s[0];e.className='pstat '+s[1]}const b=$('#paybtn');if(b)b.disabled=!payOk()}
 function lPayPick(){
@@ -773,15 +787,15 @@ function lPayPick(){
   return l.length?l.map(c=>`<button type="button" class="li" data-act="payadd" data-id="${c.code}"><div class="grow"><b>${esc(c.name)}</b></div><span class="num muted">${sar(balance(c))}</span></button>`).join(''):'<div class="empty">No match.</div>';
 }
 function vPayments(){
-  const P=payState();const m=UI.sel.method||'Cash';const s=payStat();
+  const P=payState();const m=UI.sel.method||'Cash';const s=payStat();const cash=m==='Cash';
   const rows=S.payments.slice(0,14);
-  const showPick=UI.payAdd||!P.lines.length;
+  const showPick=cash?!P.lines.length:(UI.payAdd||!P.lines.length);
   return `<div class="grid g2" style="align-items:start"><form class="card stack" id="payf">
   <div class="field"><label>1. Paid by</label><div class="chips" style="flex-wrap:wrap">${METHODS.map(x=>`<button type="button" class="chip ${m===x?'on':''}" data-act="method" data-id="${x}">${x}</button>`).join('')}</div></div>
   <div class="field"><label for="pa">2. Total received (SAR)</label><input class="inp num" id="pa" inputmode="decimal" placeholder="0.00" autocomplete="off" value="${esc(P.total)}"><small class="muted">The full amount of the transfer or cash. You split it between customers below.</small></div>
-  <div class="row"><div class="field" style="flex:1"><label for="pd">Date</label><input class="inp" id="pd" type="date" value="${esc(P.date)}"></div><div class="field" style="flex:1"><label for="pn">Reference or note</label><input class="inp" id="pn" autocomplete="off" value="${esc(P.note)}" placeholder="Transfer number"></div></div>
-  <div class="field"><label>3. Who is it for?</label><div class="stack" style="gap:8px">${P.lines.map(l=>{const c=cust(l.cc);return `<div class="payl"><div class="grow" style="flex:1;min-width:130px"><b>${esc(c.name)}</b><br><small class="muted">Owes ${balance(c)<0?'(credit) ':''}${sar(Math.abs(balance(c)))}</small></div><input class="inp num" id="pl_${l.cc}" data-pl="${l.cc}" inputmode="decimal" placeholder="0.00" value="${esc(l.amt)}" aria-label="Amount for ${esc(c.name)}"><button type="button" class="btn sm" data-act="payfill" data-id="${l.cc}">Rest</button><button type="button" class="iconbtn" style="width:36px;height:36px" data-act="payrm" data-id="${l.cc}" aria-label="Remove">${ic('x',14)}</button></div>`}).join('')}</div>
-  ${showPick?`<div class="search" style="margin-top:8px"><span>${ic('search',18)}</span><input class="inp" data-list="payList" placeholder="Search a customer to add" value="${esc(UI.q.payList||'')}" autocomplete="off"></div><div class="card" style="padding:4px 10px;max-height:240px;overflow:auto;box-shadow:none"><div class="list" id="payList">${lPayPick()}</div></div>`:`<button type="button" class="btn" style="margin-top:8px" data-act="payaddopen">${ic('plus',16)} Add another customer</button>`}</div>
+  <div class="row"><div class="field" style="flex:1"><label for="pd">Date</label><input class="inp" id="pd" type="date" value="${cash?ryToday():esc(P.date)}" ${cash?'disabled':''}>${cash?'<small class="muted">Cash is always recorded today.</small>':''}</div><div class="field" style="flex:1"><label for="pn">${cash?'Cash note (optional)':'Transfer reference'}</label><input class="inp" id="pn" autocomplete="off" value="${esc(P.note)}" placeholder="${cash?'For example: collected by driver':'Transfer number'}"></div></div>
+  <div class="field"><label>3. Who is it for?${cash?' <span class="muted" style="font-weight:600;text-transform:none;letter-spacing:0">(cash: one customer only)</span>':''}</label><div class="stack" style="gap:8px">${P.lines.map(l=>{const c=cust(l.cc);return `<div class="payl"><div class="grow" style="flex:1;min-width:130px"><b>${esc(c.name)}</b><br><small class="muted">Owes ${balance(c)<0?'(credit) ':''}${sar(Math.abs(balance(c)))}</small></div><input class="inp num" id="pl_${l.cc}" data-pl="${l.cc}" inputmode="decimal" placeholder="0.00" ${cash?'readonly':''} value="${esc(l.amt)}" aria-label="Amount for ${esc(c.name)}"><button type="button" class="btn sm" data-act="payfill" data-id="${l.cc}">Rest</button><button type="button" class="iconbtn" style="width:36px;height:36px" data-act="payrm" data-id="${l.cc}" aria-label="Remove">${ic('x',14)}</button></div>`}).join('')}</div>
+  ${showPick?`<div class="search" style="margin-top:8px"><span>${ic('search',18)}</span><input class="inp" data-list="payList" placeholder="Search a customer to add" value="${esc(UI.q.payList||'')}" autocomplete="off"></div><div class="card" style="padding:4px 10px;max-height:240px;overflow:auto;box-shadow:none"><div class="list" id="payList">${lPayPick()}</div></div>`:(cash?'':`<button type="button" class="btn" style="margin-top:8px" data-act="payaddopen">${ic('plus',16)} Add another customer</button>`)}</div>
   <div class="pstat ${s[1]}" id="paystat">${s[0]}</div>
   <button class="btn pri" id="paybtn" type="submit" ${payOk()?'':'disabled'}>${ic('check',18)} Post to Odoo</button><p class="muted" style="font-size:13px;margin:0">One payment is posted per customer. Each pays that customer's oldest open invoices first. Any extra stays as credit.</p></form>
   <div class="card"><h3>Recent payments</h3>${rows.length?`<div class="list">${rows.map(p=>`<div class="li"><div class="grow"><b>${esc(cust(p.cust).name)} · ${sar(toC(p.amount))}</b><small>${p.id} · ${esc(p.method)}${p.group?' · part of '+p.group+' ('+sar(p.groupTotal)+')':''} · ${p.by} · ${fmtT(p.t)}</small></div>${odooPill(p.odoo.state)}${can('payments')?`<button class="btn sm" data-act="payrev" data-id="${p.id}">Reverse</button>`:''}</div>`).join('')}</div>`:'<div class="empty">No payments yet.</div>'}</div></div>`;
@@ -983,8 +997,7 @@ function vModal(){
     <div class="row" style="margin-top:16px"><button class="btn" data-act="closemodal">Back</button><button class="btn pri" style="flex:1" data-act="dofin">${ic('check',18)} Finalize and post invoice</button></div>`);
   }
   if(m.type==='day'){
-    const fmt=UI.dayFmt||'a4';
-    return wrap(`<h2>Combined statement</h2><div class="chips" style="margin:6px 0 10px"><button class="chip ${fmt==='a4'?'on':''}" data-act="dayfmt" data-id="a4">A4 page</button><button class="chip ${fmt==='slip'?'on':''}" data-act="dayfmt" data-id="slip">80 mm slip</button></div><div class="dsview">${m.ccs.map(cc=>dayHtml(dayData(cc,m.key),fmt)).join('<hr>')}</div><div class="row" style="margin-top:14px"><button class="btn" data-act="closemodal">Close</button><button class="btn pri" style="flex:1" data-act="dayprintm">${ic('receipt',18)} Print</button></div>`,'').replace('class="modal "','class="modal wide"');
+    return wrap(`<h2>Day statement</h2><div class="dsview">${m.ccs.map(cc=>dayHtml(dayData(cc,m.key),'a4')).join('<hr>')}</div><div class="row" style="margin-top:14px"><button class="btn" data-act="closemodal">Close</button><button class="btn pri" style="flex:1" data-act="dayprintm">${ic('receipt',18)} Print</button></div>`,'').replace('class="modal "','class="modal wide"');
   }
   if(m.type==='receipt'){
     const o=S.orders.find(x=>x.id===m.id);
@@ -1118,15 +1131,22 @@ function dayCustomers(key){
   S.credits.forEach(p=>{if(dkey(p.t)===key)set.add(p.cust)});
   return [...set].map(cc=>[cc,dayData(cc,key)]).sort((a,b)=>cust(a[0]).name.localeCompare(cust(b[0]).name));
 }
+function lDay(){
+  const key=UI.dayKey||dkey(now());const q=(UI.q.dayList||'').trim().toLowerCase();const sel=UI.sel.dayCust;
+  const L=dayCustomers(key).filter(([cc])=>!q||cust(cc).name.toLowerCase().includes(q)||cc.toLowerCase().includes(q));
+  if(!L.length)return `<div class="empty">${q?'No customer matches "'+esc(UI.q.dayList.trim())+'".':'No finalized invoices or credit notes on '+esc(fmtLong(key))+'.'}</div>`;
+  return L.map(([cc,D])=>`<button type="button" class="dcard ${sel===cc?'on':''}" data-act="daypick" data-id="${cc}" aria-pressed="${sel===cc}"><div class="grow"><b>${esc(cust(cc).name)}</b><small>${D.inv.length?D.inv.length+' invoice'+(D.inv.length>1?'s':'')+' · SAR '+nf.format(D.invTot/100):'Credit note only'}${D.crTot?' · credit note -'+nf.format(D.crTot/100):''}</small></div><div class="dcr"><small>Receivable after</small><b class="num">${sgn(D.open+D.invTot-D.crTot)}</b></div><i class="dck">${ic('check',16)}</i></button>`).join('');
+}
 function vDaily(){
-  const key=UI.dayKey||dkey(now());const L=dayCustomers(key);const fmt=UI.dayFmt||'a4';
+  const key=UI.dayKey||dkey(now());const L=dayCustomers(key);const sel=UI.sel.dayCust;
   const pendAll=S.orders.filter(o=>o.status==='pending'&&dkey(o.createdAt)===key).length;
-  return `<div class="card stack" style="margin-bottom:16px"><div class="row" style="align-items:flex-end;gap:14px"><div class="field"><label for="dd">Date</label><input class="inp" id="dd" type="date" value="${key}"></div>
-  <div class="field"><label>Paper</label><div class="chips"><button class="chip ${fmt==='a4'?'on':''}" data-act="dayfmt" data-id="a4">A4 page</button><button class="chip ${fmt==='slip'?'on':''}" data-act="dayfmt" data-id="slip">80 mm slip</button></div></div>
-  <button class="btn pri" data-act="dayprintall" ${L.length?'':'disabled'}>${ic('receipt',18)} Print all ${L.length} customer${L.length===1?'':'s'}</button></div>
-  <p class="muted" style="margin:0;font-size:13.5px">Each statement adds up all finalized invoices of the chosen date for one customer, with credit notes. It lists invoices and credit notes only (no payments) and shows the receivable after them, even if you print it on a later day.</p>
+  return `<div class="card stack" style="margin-bottom:14px"><div class="field"><label for="dd">1. Date</label><input class="inp" id="dd" type="date" value="${key}"></div>
+  <div class="field"><label for="dq">2. Customer</label><div class="search"><span>${ic('search',18)}</span><input class="inp" id="dq" data-list="dayList" placeholder="Search any part of the name" value="${esc(UI.q.dayList||'')}" autocomplete="off"></div>
+  <small class="muted">${L.length?L.length+' customer'+(L.length===1?'':'s')+' with invoices or credit notes on this date.':'Nobody has invoices or credit notes on this date.'}</small></div>
   ${pendAll?`<div class="hint" style="background:var(--warn-soft);color:var(--warn)">${pendAll} order${pendAll>1?'s':''} of this date ${pendAll>1?'are':'is'} not finalized yet and ${pendAll>1?'are':'is'} not included.</div>`:''}</div>
-  ${L.length?`<div class="tbl"><table><thead><tr><th>Customer</th><th class="r">Invoices</th><th class="r">Invoice total</th><th class="r">Credit notes</th><th class="r">Receivable after these</th><th></th></tr></thead><tbody>${L.map(([cc,D])=>`<tr><td><b>${esc(cust(cc).name)}</b><br><small class="muted">${D.inv.map(o=>o.inv).join(', ')||'Credit note only'}</small></td><td class="r num">${D.inv.length}</td><td class="r num">${nf.format(D.invTot/100)}</td><td class="r num">${D.crTot?'-'+nf.format(D.crTot/100):'—'}</td><td class="r num"><b>${sgn(D.open+D.invTot-D.crTot)}</b></td><td class="r" style="white-space:nowrap"><button class="btn sm" data-act="dayview" data-id="${cc}">Preview</button> <button class="btn sm pri" data-act="dayprint" data-id="${cc}">${ic('receipt',14)} Print</button></td></tr>`).join('')}</tbody></table></div>`:`<div class="card empty">No finalized invoices or credit notes on ${esc(fmtLong(key))}.</div>`}`;
+  <div class="dlist" id="dayList">${lDay()}</div>
+  <div class="dayact"><div class="grow"><small>Statement for</small><b>${sel&&L.some(x=>x[0]===sel)?esc(cust(sel).name):'Choose a customer above'}</b></div><button class="btn" data-act="dayview" data-id="${sel||''}" ${sel?'':'disabled'}>Preview</button><button class="btn pri" data-act="dayprint" data-id="${sel||''}" ${sel?'':'disabled'}>${ic('receipt',18)} Print</button></div>
+  <p class="muted" style="margin:12px 2px 0;font-size:13px">The statement lists the finalized invoices and credit notes of the chosen date for one customer (no payments) and shows the receivable after them, even if you print it on a later day.</p>`;
 }
 /* ---------- receipt (80 mm) ---------- */
 function receiptHtml(o){
@@ -1308,11 +1328,10 @@ document.addEventListener('click',e=>{
    case 'create':{if(!UI.draft.lines.length)break;const d=UI.draft;act(async()=>{const oid=await newOrder(d);UI.draft=null;UI.view='pending';UI.hist=[];UI.modal={type:'receipt',id:oid,title:'Order created'};render();if(S.set.autoPrint)setTimeout(()=>printOrder(oid),350)});break}
    case 'savechg':{const d=UI.draft,idd=d.orderId;act(async()=>{await saveOrder(d);UI.draft=null;UI.view='pending';UI.modal={type:'receipt',id:idd,title:'Order updated'};render();if(S.set.autoPrint)setTimeout(()=>printOrder(idd),350)});break}
    case 'print':printOrder(id);break;
-   case 'dayfmt':UI.dayFmt=id;render();break;
-   case 'dayview':UI.modal={type:'day',ccs:[id],key:UI.dayKey||dkey(now()),wide:true};render();break;
-   case 'dayprint':printDay([id],UI.dayKey||dkey(now()),UI.dayFmt||'a4');break;
-   case 'dayprintall':printDay(dayCustomers(UI.dayKey||dkey(now())).map(x=>x[0]),UI.dayKey||dkey(now()),UI.dayFmt||'a4');break;
-   case 'dayprintm':printDay(UI.modal.ccs,UI.modal.key,UI.dayFmt||'a4');break;
+   case 'daypick':UI.sel.dayCust=UI.sel.dayCust===id?null:id;render();break;
+   case 'dayview':if(!id)break;UI.modal={type:'day',ccs:[id],key:UI.dayKey||dkey(now()),wide:true};render();break;
+   case 'dayprint':if(id)printDay([id],UI.dayKey||dkey(now()),'a4');break;
+   case 'dayprintm':printDay(UI.modal.ccs,UI.modal.key,'a4');break;
    case 'canceledit':UI.draft=null;UI.modal=null;UI.view='pending';render();break;
    case 'editord':editDraft(id);render();break;
    case 'fin':{const o=S.orders.find(x=>x.id===id);if(!can('order_finalize'))break;UI.pop=false;UI.modal={type:'fin',id,tout:''};render();break}
@@ -1327,7 +1346,10 @@ document.addEventListener('click',e=>{
    case 'tab':UI.tab[t.dataset.grp]=id;if(t.dataset.grp==='admin')UI.sel.admCust=null;render();break;
    case 'selcust':UI.sel[t.dataset.grp]=id;render();break;
    case 'clrcust':UI.sel[id]=null;render();break;
-   case 'method':UI.sel.method=id;render();break;
+   case 'method':{const P=payState();const was=isCash();const goCash=id==='Cash';
+     const apply=()=>{UI.sel.method=id;if(was!==goCash)P.note='';if(goCash){P.date=ryToday();P.lines=P.lines.slice(0,1);if(P.lines.length===1)P.lines[0].amt=P.total}UI.payAdd=false;render()};
+     if(goCash&&!was&&P.lines.length>1){ask('Switch to cash?','Cash is recorded for one customer only. Only '+cust(P.lines[0].cc).name+' stays in this payment; the other customers are removed.','Yes, switch to cash',apply,{keep:'No, keep the transfer'})}
+     else apply();break}
    case 'payadd':{const P=payState();const left=payCalc().left;P.lines.push({cc:id,amt:left>0?(left/100).toFixed(2):''});UI.payAdd=false;UI.q.payList='';render();break}
    case 'payaddopen':UI.payAdd=true;render();break;
    case 'payrm':{const P=payState();P.lines=P.lines.filter(l=>l.cc!==id);render();break}
@@ -1379,7 +1401,7 @@ document.addEventListener('submit',e=>{
   else if(f.id==='payf'){
     if(!payOk()){toast('The amounts must add up to the total received');return}
     const P=payState();const c=payCalc();
-    act(async()=>{const r=await api('POST','/api/payments',{method:UI.sel.method||'Cash',date:P.date,note:P.note,total:c.tot/100,lines:P.lines.map(l=>({cc:l.cc,amount:pc(l.amt)/100}))});UI.pay=null;UI.payAdd=false;UI.q.payList='';return r},
+    act(async()=>{const r=await api('POST','/api/payments',{method:UI.sel.method||'Cash',date:isCash()?ryToday():P.date,note:P.note,total:c.tot/100,lines:P.lines.map(l=>({cc:l.cc,amount:pc(l.amt)/100}))});UI.pay=null;UI.payAdd=false;UI.q.payList='';return r},
       r=>{const ok=r.states.every(x=>x.odoo_state==='posted');return r.ids.length+' payment'+(r.ids.length>1?'s':'')+(ok?' posted to Odoo':' saved, waiting for Odoo')+', total '+sar(c.tot)});
   } else if(f.id==='cnf'){
     const amt=parseFloat($('#ca').value);if(!UI.sel.cn||!(amt>0)){toast('Pick a customer and enter an amount');return}
@@ -1431,11 +1453,11 @@ document.addEventListener('input',e=>{
     const go=$('#tigo');if(go)go.disabled=bad;return}
   if(t.id==='xq'&&UI.modal&&UI.modal.type==='xfer'){const m=UI.modal;m.qty=t.value;const from=m.from||S.set.branches[0];const to=S.set.branches.find(x=>x!==from);const q=parseInt(t.value,10)||0;
     const pv=$('#xprev');if(pv){pv.textContent=xferPrev(from,to,q);pv.className='pstat '+(q>0&&q<=bstock(from)?'ok':'bad')}const go=$('#xgo');if(go)go.disabled=!(q>0&&q<=bstock(from));return}
-  if(t.id==='pa'){payState().total=t.value;updPay();return}
+  if(t.id==='pa'){const P=payState();P.total=t.value;if(isCash()&&P.lines.length===1){P.lines[0].amt=t.value;const e=document.getElementById('pl_'+P.lines[0].cc);if(e)e.value=t.value}updPay();return}
   if(t.id==='pd'){payState().date=t.value;return}
   if(t.id==='pn'){payState().note=t.value;return}
   if(t.dataset.pl){const l=payState().lines.find(x=>x.cc===t.dataset.pl);if(l)l.amt=t.value;updPay();return}
-  if(t.dataset.list){const k=t.dataset.list;UI.q[k]=t.value;const L={custList:lCust,cvList:lCV,ordList:lOrders,apList:lAP,acList:lAC,otList:lOT,auList:lAU,payList:lPayPick,cnList:()=>lPick('cn'),adjList:()=>lPick('adj'),prList:()=>lPrices(UI.sel.admCust&&UI.tab.admin==='custs'&&UI.view==='admin'?UI.sel.admCust:UI.sel.custView,UI.view==='admin')};const el=document.getElementById(k);if(el&&L[k])el.innerHTML=L[k]()}
+  if(t.dataset.list){const k=t.dataset.list;UI.q[k]=t.value;const L={custList:lCust,cvList:lCV,ordList:lOrders,apList:lAP,acList:lAC,otList:lOT,auList:lAU,payList:lPayPick,dayList:lDay,cnList:()=>lPick('cn'),adjList:()=>lPick('adj'),prList:()=>lPrices(UI.sel.admCust&&UI.tab.admin==='custs'&&UI.view==='admin'?UI.sel.admCust:UI.sel.custView,UI.view==='admin')};const el=document.getElementById(k);if(el&&L[k])el.innerHTML=L[k]()}
 });
 document.addEventListener('change',e=>{
   const t=e.target;
@@ -1448,7 +1470,7 @@ document.addEventListener('change',e=>{
     act(()=>api('PUT','/api/admin/price',{cust:cc,prod:pcd,price:raw===''?null:parseFloat(raw)}),'Price saved and logged').then(()=>{const el=document.getElementById('prList');if(el)el.innerHTML=lPrices(cc,true)});
   }
   else if(t.id==='trayf'){UI.sel.trayCust=t.value||null;render()}
-  else if(t.id==='dd'){UI.dayKey=t.value||dkey(now());render()}
+  else if(t.id==='dd'){UI.dayKey=t.value||dkey(now());UI.sel.dayCust=null;render()}
   else if(t.id==='trayb'){UI.sel.trayBr=t.value||null;render()}
   else if(t.dataset.copen){
     const cc=t.dataset.copen;const v=Math.max(0,parseInt(t.value,10)||0);

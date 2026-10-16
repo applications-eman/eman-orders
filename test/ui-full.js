@@ -198,6 +198,20 @@ let checks = 0;
       for (const t of ['pending', 'cancelled', 'final']) await click(`[data-act="tab"][data-id="${t}"]`);
       await pg.fill('[data-list="ordList"]', 'zzzz'); await pg.fill('[data-list="ordList"]', '');
     });
+    await step('payments: cash is one customer and today only; transfers stay flexible', async () => {
+      await nav('payments');
+      await click('[data-act="method"][data-id="Cash"]');
+      if (!(await pg.$('#pd[disabled]'))) throw new Error('cash date can be changed');
+      if (!/cash note/i.test(await pg.innerText('#payf'))) throw new Error('cash note label missing');
+      await pg.fill('#pa', '5'); await click('[data-act="payadd"]'); await pg.waitForSelector('[data-pl][readonly]');
+      if (await pg.$('[data-act="payaddopen"]')) throw new Error('cash allows a second customer');
+      if (parseFloat(await pg.inputValue('[data-pl]')) !== 5) throw new Error('cash amount did not follow the total');
+      await click('[data-act="method"][data-id="SAB bank"]');
+      if (await pg.$('#pd[disabled]')) throw new Error('transfer date is locked');
+      if (!/transfer reference/i.test(await pg.innerText('#payf'))) throw new Error('transfer reference label missing');
+      if (!(await pg.$('[data-act="payaddopen"]'))) throw new Error('transfer cannot add another customer');
+      await click('[data-act="payrm"]'); await pg.fill('#pa', '');
+    });
     await step('payments: split between two customers', async () => {
       await nav('payments'); await click('[data-act="method"][data-id="SAB bank"]'); await pg.fill('#pa', '100');
       await click('[data-act="payadd"]'); await pg.waitForSelector('[data-pl]'); await click('[data-act="payaddopen"]'); await pg.fill('[data-list="payList"]', ''); await click('[data-act="payadd"]');
@@ -238,8 +252,15 @@ let checks = 0;
     });
     await step('day statement: preview and print', async () => {
       await nav('daily'); await shot('daily'); await layout('daily');
-      await click('[data-act="dayview"]'); await pg.waitForSelector('.dsview'); await shot('daily_preview'); await click('.modal [data-act="dayfmt"][data-id="slip"]'); await click('.modal button[data-act="closemodal"]');
-      await click('[data-act="dayprint"]');
+      if (await pg.$('[data-act="dayfmt"], [data-act="dayprintall"]')) throw new Error('paper buttons or print-all are still there');
+      await pg.waitForSelector('[data-act="daypick"]');
+      // search by any part of the name; nothing matches gibberish
+      await pg.fill('#dq', 'qqzzxx'); await pg.waitForFunction(() => !document.querySelector('[data-act="daypick"]') && /No customer matches/.test(document.body.innerText), null, { timeout: 3000 });
+      await pg.fill('#dq', ''); await pg.waitForSelector('[data-act="daypick"]');
+      if (!(await pg.$('.dayact [data-act="dayprint"][disabled]'))) throw new Error('print should wait for a customer');
+      await click('[data-act="daypick"]'); await pg.waitForSelector('.dcard.on'); await shot('daily_selected');
+      await click('.dayact [data-act="dayview"]'); await pg.waitForSelector('.dsview'); await shot('daily_preview'); await click('.modal button[data-act="closemodal"]');
+      await pg.evaluate(() => { window.print = () => {}; }); await click('.dayact [data-act="dayprint"]');
     });
     await step('odoo sync screen', async () => { await nav('sync'); await shot('sync'); await layout('sync'); });
     await step('staff cannot see admin', async () => { if (await pg.$('[data-act="nav"][data-id="admin"]')) throw new Error('admin menu visible'); });
