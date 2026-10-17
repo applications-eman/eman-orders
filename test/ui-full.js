@@ -208,6 +208,9 @@ let checks = 0;
       if (parseFloat(await pg.inputValue('[data-pl]')) !== 5) throw new Error('cash amount did not follow the total');
       await click('[data-act="method"][data-id="SAB bank"]');
       if (await pg.$('#pd[disabled]')) throw new Error('transfer date is locked');
+      await click('#pd'); await pg.waitForSelector('.dpm .dpd'); const before = await pg.innerText('#pd'); await click('.dpm [data-act="dpmove"][data-id="-1"]'); await click('.dpm .dpd >> nth=4');
+      await pg.waitForFunction(() => !document.querySelector('.dpm'), null, { timeout: 3000 });
+      if ((await pg.innerText('#pd')) === before) throw new Error('transfer date did not change');
       if (!/transfer reference/i.test(await pg.innerText('#payf'))) throw new Error('transfer reference label missing');
       if (!(await pg.$('[data-act="payaddopen"]'))) throw new Error('transfer cannot add another customer');
       await click('[data-act="payrm"]'); await pg.fill('#pa', '');
@@ -253,6 +256,12 @@ let checks = 0;
     await step('day statement: preview and print', async () => {
       await nav('daily'); await shot('daily'); await layout('daily');
       if (await pg.$('[data-act="dayfmt"], [data-act="dayprintall"]')) throw new Error('paper buttons or print-all are still there');
+      if (await pg.$('input[type=date]')) throw new Error('a browser date box is still used (it follows the device calendar)');
+      await click('#dd'); await pg.waitForSelector('.dpm .dpd'); await shot('calendar');
+      if (!/^(January|February|March|April|May|June|July|August|September|October|November|December) \d{4}$/.test((await pg.innerText('.dpm .dpt')).trim())) throw new Error('calendar is not Gregorian: ' + await pg.innerText('.dpm .dpt'));
+      await click('.dpm [data-act="dpmove"][data-id="-1"]'); await click('.dpm .dpd >> nth=2');
+      await pg.waitForFunction(() => !document.querySelector('.dpm'), null, { timeout: 3000 });
+      await click('#dd'); await pg.waitForSelector('.dpm'); await click('.dpm .btn.pri'); await pg.waitForFunction(() => !document.querySelector('.dpm'), null, { timeout: 3000 });
       await pg.waitForSelector('[data-act="daypick"]');
       // search by any part of the name; nothing matches gibberish
       await pg.fill('#dq', 'qqzzxx'); await pg.waitForFunction(() => !document.querySelector('[data-act="daypick"]') && /No customer matches/.test(document.body.innerText), null, { timeout: 3000 });

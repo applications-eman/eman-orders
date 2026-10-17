@@ -425,6 +425,21 @@ body.busy::after{content:"";position:fixed;top:0;left:0;right:0;height:3px;z-ind
 .dayact{position:sticky;bottom:14px;z-index:5;display:flex;align-items:center;gap:10px;margin-top:14px;padding:12px 14px;background:var(--surface);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow2,var(--shadow))}
 .dayact .grow{flex:1;min-width:0}.dayact .grow b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.dayact small{color:var(--muted);font-size:12px}
 @media (max-width:760px){.dayact{bottom:calc(var(--tab-h) + var(--sabx) + 14px)}}
+/* date field + own Gregorian calendar (the browser's calendar follows the device region and can show Hijri) */
+.datebtn{display:flex;align-items:center;justify-content:space-between;gap:10px;text-align:left;cursor:pointer;min-height:48px;font-weight:600}
+.datebtn[disabled]{opacity:.7;cursor:not-allowed}
+.dpm{width:min(400px,100%)}
+.dpbar{display:flex;align-items:center;gap:6px;margin-bottom:12px}
+.dpbar .iconbtn{width:42px;height:42px;flex:none;display:flex;align-items:center;justify-content:center;gap:0}
+.dpbar .iconbtn:nth-child(1),.dpbar .iconbtn:nth-child(2){transform:scaleX(-1)}
+.dpbar .iconbtn svg{margin:0 -4px}
+.dpt{flex:1;text-align:center;font-size:18px}
+.dpg{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+.dpw span{text-align:center;font-size:12px;font-weight:800;color:var(--muted);padding:6px 0;text-transform:uppercase}
+.dpd{min-height:46px;border-radius:12px;border:1px solid transparent;background:none;font-size:16px;font-weight:700;color:var(--ink)}
+.dpd:hover{background:var(--surface2)}
+.dpd.tod{border-color:var(--brand)}
+.dpd.on{background:var(--brand);color:var(--brand-ink);border-color:var(--brand)}
 </style>
 </head>
 <body>
@@ -437,7 +452,7 @@ body.busy::after{content:"";position:fixed;top:0;left:0;right:0;height:3px;z-ind
 /* ---------- helpers ---------- */
 const $=(s,r=document)=>r.querySelector(s);
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const I={home:'<path d="M3 11l9-8 9 8v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>',plus:'<path d="M12 5v14M5 12h14"/>',minus:'<path d="M5 12h14"/>',clock:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',wallet:'<path d="M3 7a2 2 0 0 1 2-2h13v4"/><path d="M3 7v11a2 2 0 0 0 2 2h14a1 1 0 0 0 1-1V9a1 1 0 0 0-1-1H5a2 2 0 0 1-2-1z"/><circle cx="16" cy="14" r="1.2"/>',receipt:'<path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/>',tray:'<path d="M3 8l9-5 9 5-9 5z"/><path d="M3 12l9 5 9-5M3 16l9 5 9-5"/>',users:'<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.6 3.2-5.5 6.5-5.5s5.9 1.9 6.5 5.5"/><path d="M16 4.6a3.5 3.5 0 0 1 0 6.8M18 14.8c2 .7 3.2 2.5 3.5 5.2"/>',user:'<circle cx="12" cy="8" r="4"/><path d="M4 21c.7-4 3.6-6 8-6s7.3 2 8 6"/>',settings:'<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',bell:'<path d="M6 8a6 6 0 1 1 12 0c0 7 3 8 3 8H3s3-1 3-8"/><path d="M10 21a2 2 0 0 0 4 0"/>',search:'<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/>',check:'<path d="M5 12.5l4.5 4.5L19 7"/>',x:'<path d="M6 6l12 12M18 6L6 18"/>',chev:'<path d="M9 5l7 7-7 7"/>',back:'<path d="M15 5l-7 7 7 7"/>',shield:'<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/>',list:'<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>',sync:'<path d="M21 12a9 9 0 0 1-15.5 6.2L3 16M3 12a9 9 0 0 1 15.5-6.2L21 8"/><path d="M21 3v5h-5M3 21v-5h5"/>',logout:'<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/>',tag:'<path d="M3 12V4a1 1 0 0 1 1-1h8l9 9-9 9z"/><circle cx="8" cy="8" r="1.2"/>',box:'<path d="M3 8l9-5 9 5v8l-9 5-9-5z"/><path d="M3 8l9 5 9-5M12 13v8"/>',trash:'<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>',edit:'<path d="M4 20h4L19 9l-4-4L4 16z"/>',more:'<circle cx="5" cy="12" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="19" cy="12" r="1.4"/>',cart:'<circle cx="9" cy="20" r="1.5"/><circle cx="18" cy="20" r="1.5"/><path d="M2 3h3l2.6 12.4a1 1 0 0 0 1 .8h9.2a1 1 0 0 0 1-.8L21 7H6"/>',theme:'<path d="M21 13A9 9 0 1 1 11 3a7 7 0 0 0 10 10z"/>',credit:'<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18M7 15h4"/>',key:'<circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M16 7l3 3"/>',mail:'<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/>',lock:'<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',eye:'<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',eyeoff:'<path d="M3 3l18 18M10.6 5.1A10 10 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-3.2 4M6.5 6.6C3.7 8.4 2 12 2 12s3.6 7 10 7a9.7 9.7 0 0 0 4.2-.9M9.9 9.9a3 3 0 0 0 4.2 4.2"/>'};
+const I={calendar:'<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>',home:'<path d="M3 11l9-8 9 8v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>',plus:'<path d="M12 5v14M5 12h14"/>',minus:'<path d="M5 12h14"/>',clock:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',wallet:'<path d="M3 7a2 2 0 0 1 2-2h13v4"/><path d="M3 7v11a2 2 0 0 0 2 2h14a1 1 0 0 0 1-1V9a1 1 0 0 0-1-1H5a2 2 0 0 1-2-1z"/><circle cx="16" cy="14" r="1.2"/>',receipt:'<path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/>',tray:'<path d="M3 8l9-5 9 5-9 5z"/><path d="M3 12l9 5 9-5M3 16l9 5 9-5"/>',users:'<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.6 3.2-5.5 6.5-5.5s5.9 1.9 6.5 5.5"/><path d="M16 4.6a3.5 3.5 0 0 1 0 6.8M18 14.8c2 .7 3.2 2.5 3.5 5.2"/>',user:'<circle cx="12" cy="8" r="4"/><path d="M4 21c.7-4 3.6-6 8-6s7.3 2 8 6"/>',settings:'<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',bell:'<path d="M6 8a6 6 0 1 1 12 0c0 7 3 8 3 8H3s3-1 3-8"/><path d="M10 21a2 2 0 0 0 4 0"/>',search:'<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/>',check:'<path d="M5 12.5l4.5 4.5L19 7"/>',x:'<path d="M6 6l12 12M18 6L6 18"/>',chev:'<path d="M9 5l7 7-7 7"/>',back:'<path d="M15 5l-7 7 7 7"/>',shield:'<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/>',list:'<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>',sync:'<path d="M21 12a9 9 0 0 1-15.5 6.2L3 16M3 12a9 9 0 0 1 15.5-6.2L21 8"/><path d="M21 3v5h-5M3 21v-5h5"/>',logout:'<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/>',tag:'<path d="M3 12V4a1 1 0 0 1 1-1h8l9 9-9 9z"/><circle cx="8" cy="8" r="1.2"/>',box:'<path d="M3 8l9-5 9 5v8l-9 5-9-5z"/><path d="M3 8l9 5 9-5M12 13v8"/>',trash:'<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>',edit:'<path d="M4 20h4L19 9l-4-4L4 16z"/>',more:'<circle cx="5" cy="12" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="19" cy="12" r="1.4"/>',cart:'<circle cx="9" cy="20" r="1.5"/><circle cx="18" cy="20" r="1.5"/><path d="M2 3h3l2.6 12.4a1 1 0 0 0 1 .8h9.2a1 1 0 0 0 1-.8L21 7H6"/>',theme:'<path d="M21 13A9 9 0 1 1 11 3a7 7 0 0 0 10 10z"/>',credit:'<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18M7 15h4"/>',key:'<circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M16 7l3 3"/>',mail:'<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/>',lock:'<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',eye:'<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',eyeoff:'<path d="M3 3l18 18M10.6 5.1A10 10 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-3.2 4M6.5 6.6C3.7 8.4 2 12 2 12s3.6 7 10 7a9.7 9.7 0 0 0 4.2-.9M9.9 9.9a3 3 0 0 0 4.2 4.2"/>'};
 const ic=(n,s=20)=>`<svg class="ic" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${I[n]||''}</svg>`;
 const nf=new Intl.NumberFormat('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
 const nf0=new Intl.NumberFormat('en-US',{maximumFractionDigits:0});
@@ -519,8 +534,9 @@ function deadline(t){
 }
 const pending=()=>S.orders.filter(o=>o.status==='pending');
 const overdue=()=>pending().filter(o=>o.deadline<=now());
-const fmtT=t=>new Date(t).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
-const fmtD=t=>new Date(t).toLocaleDateString([], {day:'2-digit',month:'short',year:'numeric'});
+const GREG={calendar:'gregory',numberingSystem:'latn'};
+const fmtT=t=>new Date(t).toLocaleTimeString('en-US', {hour:'2-digit',minute:'2-digit',...GREG});
+const fmtD=t=>new Date(t).toLocaleDateString('en-US', {day:'2-digit',month:'short',year:'numeric',...GREG});
 const fmtDT=t=>fmtD(t)+' '+fmtT(t);
 function cdText(ms){if(ms<=0)return 'Overdue';const s=Math.floor(ms/1000),h=Math.floor(s/3600),m=Math.floor(s%3600/60),ss=s%60;return (h?h+':'+pad(m,2):pad(m,2))+':'+pad(ss,2)}
 function cdClass(ms){return ms<=0?'bad':ms<600000?'warn':''}
@@ -615,7 +631,7 @@ function vHome(){
   const col=S.payments.filter(p=>new Date(p.t).toDateString()===today).reduce((a,p)=>a+toC(p.amount),0);
   const pn=pending();const h=new Date(now()).getHours();
   const greet=h<12?'Good morning':h<17?'Good afternoon':'Good evening';
-  return `<div class="stack" style="gap:18px"><div class="greet"><h2>${greet}, ${esc(u.name)}</h2><p>${new Date(now()).toLocaleDateString([], {weekday:'long',day:'numeric',month:'long'})} · ${pn.length?pn.length+' order'+(pn.length>1?'s':'')+' waiting to be finalized':'nothing waiting to be finalized'}</p></div>${setupCard()}${notInOdoo()}
+  return `<div class="stack" style="gap:18px"><div class="greet"><h2>${greet}, ${esc(u.name)}</h2><p>${new Date(now()).toLocaleDateString('en-US', {weekday:'long',day:'numeric',month:'long',...GREG})} · ${pn.length?pn.length+' order'+(pn.length>1?'s':'')+' waiting to be finalized':'nothing waiting to be finalized'}</p></div>${setupCard()}${notInOdoo()}
   <div class="grid g4"><div class="card stat"><div class="si">${ic('clock',20)}</div><small>Waiting to finalize</small><b>${pn.length}</b><span>${pn.length?'Next due '+fmtT(Math.min(...pn.map(o=>o.deadline))):'Nothing pending'}</span></div>
   <div class="card stat"><div class="si">${ic('receipt',20)}</div><small>Sales today</small><b class="num">${sar(sales)}</b><span>${fin.length} finalized order${fin.length===1?'':'s'}</span></div>
   <div class="card stat"><div class="si">${ic('wallet',20)}</div><small>Collected today</small><b class="num">${sar(col)}</b><span>${S.payments.filter(p=>new Date(p.t).toDateString()===today).length} payment(s)</span></div>
@@ -773,6 +789,10 @@ function lPick(key){
   return l.length?l.map(c=>`<button class="li" data-act="selcust" data-grp="${key}" data-id="${c.code}"><div class="grow"><b>${esc(c.name)}</b></div><span class="num muted">${sar(balance(c))}</span></button>`).join(''):'<div class="empty">No match.</div>';
 }
 const METHODS=['Cash','SAB bank','Neoleap wallet','HALA bank','Kafeel Al Rajhi','Shaikhs bank'];
+const MON=['January','February','March','April','May','June','July','August','September','October','November','December'];
+const DOW=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+const dateTxt=k=>{const [y,m,d]=String(k).split('-').map(Number);if(!y)return '';return DOW[new Date(Date.UTC(y,m-1,d)).getUTCDay()]+', '+d+' '+MON[m-1].slice(0,3)+' '+y};
+const dateBtn=(id,val,dis)=>`<button type="button" class="inp datebtn" id="${id}" data-act="datepick" data-id="${id}" ${dis?'disabled':''}><span>${esc(dateTxt(val))}</span>${ic('calendar',20)}</button>`;
 const ryToday=()=>new Date(now()+3*3600*1000).toISOString().slice(0,10);
 const isCash=()=>(UI.sel.method||'Cash')==='Cash';
 function payState(){return UI.pay||(UI.pay={total:'',date:ryToday(),note:'',lines:[]})}
@@ -793,7 +813,7 @@ function vPayments(){
   return `<div class="grid g2" style="align-items:start"><form class="card stack" id="payf">
   <div class="field"><label>1. Paid by</label><div class="chips" style="flex-wrap:wrap">${METHODS.map(x=>`<button type="button" class="chip ${m===x?'on':''}" data-act="method" data-id="${x}">${x}</button>`).join('')}</div></div>
   <div class="field"><label for="pa">2. Total received (SAR)</label><input class="inp num" id="pa" inputmode="decimal" placeholder="0.00" autocomplete="off" value="${esc(P.total)}"><small class="muted">The full amount of the transfer or cash. You split it between customers below.</small></div>
-  <div class="row"><div class="field" style="flex:1"><label for="pd">Date</label><input class="inp" id="pd" type="date" value="${cash?ryToday():esc(P.date)}" ${cash?'disabled':''}>${cash?'<small class="muted">Cash is always recorded today.</small>':''}</div><div class="field" style="flex:1"><label for="pn">${cash?'Cash note (optional)':'Transfer reference'}</label><input class="inp" id="pn" autocomplete="off" value="${esc(P.note)}" placeholder="${cash?'For example: collected by driver':'Transfer number'}"></div></div>
+  <div class="row"><div class="field" style="flex:1"><label for="pd">Date</label>${dateBtn('pd',cash?ryToday():P.date,cash)}${cash?'<small class="muted">Cash is always recorded today.</small>':''}</div><div class="field" style="flex:1"><label for="pn">${cash?'Cash note (optional)':'Transfer reference'}</label><input class="inp" id="pn" autocomplete="off" value="${esc(P.note)}" placeholder="${cash?'For example: collected by driver':'Transfer number'}"></div></div>
   <div class="field"><label>3. Who is it for?${cash?' <span class="muted" style="font-weight:600;text-transform:none;letter-spacing:0">(cash: one customer only)</span>':''}</label><div class="stack" style="gap:8px">${P.lines.map(l=>{const c=cust(l.cc);return `<div class="payl"><div class="grow" style="flex:1;min-width:130px"><b>${esc(c.name)}</b><br><small class="muted">Owes ${balance(c)<0?'(credit) ':''}${sar(Math.abs(balance(c)))}</small></div><input class="inp num" id="pl_${l.cc}" data-pl="${l.cc}" inputmode="decimal" placeholder="0.00" ${cash?'readonly':''} value="${esc(l.amt)}" aria-label="Amount for ${esc(c.name)}"><button type="button" class="btn sm" data-act="payfill" data-id="${l.cc}">Rest</button><button type="button" class="iconbtn" style="width:36px;height:36px" data-act="payrm" data-id="${l.cc}" aria-label="Remove">${ic('x',14)}</button></div>`}).join('')}</div>
   ${showPick?`<div class="search" style="margin-top:8px"><span>${ic('search',18)}</span><input class="inp" data-list="payList" placeholder="Search a customer to add" value="${esc(UI.q.payList||'')}" autocomplete="off"></div><div class="card" style="padding:4px 10px;max-height:240px;overflow:auto;box-shadow:none"><div class="list" id="payList">${lPayPick()}</div></div>`:(cash?'':`<button type="button" class="btn" style="margin-top:8px" data-act="payaddopen">${ic('plus',16)} Add another customer</button>`)}</div>
   <div class="pstat ${s[1]}" id="paystat">${s[0]}</div>
@@ -977,6 +997,15 @@ function vModal(){
     <div class="pstat ${bad?'bad':'ok'}" id="tistat" style="margin-top:10px">${v===''?'Type the number of trays (0 if none), then press Enter':n>mx?'Customer holds only '+mx+' trays':n+' trays will be recorded as brought'}</div>
     <div class="row" style="margin-top:14px"><button class="btn" data-act="closemodal">Cancel</button><button class="btn" data-act="tinzero">None (0)</button><button class="btn pri" style="flex:1" id="tigo" data-act="tinok" ${bad?'disabled':''}>Continue ${ic('chev',18)}</button></div>`);
   }
+  if(m.type==='date'){
+    const y=m.y,mo=m.mo,first=new Date(Date.UTC(y,mo,1)).getUTCDay(),days=new Date(Date.UTC(y,mo+1,0)).getUTCDate(),today=ryToday();
+    const key=d=>y+'-'+pad(mo+1,2)+'-'+pad(d,2);
+    let cells='';for(let i=0;i<first;i++)cells+='<i></i>';
+    for(let d=1;d<=days;d++){const k=key(d);cells+=`<button type="button" class="dpd ${k===m.value?'on':''} ${k===today?'tod':''}" data-act="dppick" data-id="${k}" aria-label="${esc(dateTxt(k))}" ${k===m.value?'aria-current="date"':''}>${d}</button>`}
+    return wrap(`<div class="dpbar"><button type="button" class="iconbtn" data-act="dpmove" data-id="-12" aria-label="Previous year">${ic('chev',18)}${ic('chev',18)}</button><button type="button" class="iconbtn" data-act="dpmove" data-id="-1" aria-label="Previous month">${ic('chev',20)}</button><b class="dpt">${MON[mo]} ${y}</b><button type="button" class="iconbtn" data-act="dpmove" data-id="1" aria-label="Next month">${ic('chev',20)}</button><button type="button" class="iconbtn" data-act="dpmove" data-id="12" aria-label="Next year">${ic('chev',18)}${ic('chev',18)}</button></div>
+    <div class="dpg dpw">${DOW.map(x=>`<span>${x}</span>`).join('')}</div><div class="dpg">${cells}</div>
+    <div class="row" style="margin-top:14px"><button class="btn" style="flex:1" data-act="closemodal">Cancel</button><button class="btn pri" style="flex:1" data-act="dppick" data-id="${today}">Today</button></div>`).replace('class="modal "','class="modal dpm"');
+  }
   if(m.type==='ask'){
     return wrap(`<h2 style="margin-bottom:8px">${esc(m.title)}</h2><p class="muted" style="margin:0;font-size:15px;line-height:1.45">${esc(m.text)}</p><div class="row" style="margin-top:20px;gap:10px"><button class="btn" id="askno" style="flex:1" data-act="closemodal">${esc(m.keep)}</button><button class="btn ${m.danger?'bad':'pri'}" style="flex:1" data-act="askyes">${esc(m.yes)}</button></div>`);
   }
@@ -1099,7 +1128,7 @@ function dayData(cc,key){
     crTot:cr.reduce((a,p)=>a+toC(p.amount),0),payTot:pay.reduce((a,p)=>a+toC(p.amount),0),
     open:asOf(cc,key,false),close:asOf(cc,key,true),pend:S.orders.filter(o=>o.cust===cc&&o.status==='pending'&&dkey(o.createdAt)===key).length};
 }
-const fmtLong=k=>{const [y,m,d]=k.split('-').map(Number);return new Date(y,m-1,d).toLocaleDateString('en-GB',{weekday:'long',day:'2-digit',month:'long',year:'numeric'})};
+const fmtLong=k=>{const [y,m,d]=k.split('-').map(Number);return new Date(y,m-1,d).toLocaleDateString('en-GB',{weekday:'long',day:'2-digit',month:'long',year:'numeric',...GREG})};
 const sgn=c=>(c<0?'-':'')+nf.format(Math.abs(c)/100);
 function dayHtml(D,fmt){
   const c=cust(D.cc);const slip=fmt==='slip';
@@ -1140,7 +1169,7 @@ function lDay(){
 function vDaily(){
   const key=UI.dayKey||dkey(now());const L=dayCustomers(key);const sel=UI.sel.dayCust;
   const pendAll=S.orders.filter(o=>o.status==='pending'&&dkey(o.createdAt)===key).length;
-  return `<div class="card stack" style="margin-bottom:14px"><div class="field"><label for="dd">1. Date</label><input class="inp" id="dd" type="date" value="${key}"></div>
+  return `<div class="card stack" style="margin-bottom:14px"><div class="field"><label for="dd">1. Date</label>${dateBtn('dd',key)}</div>
   <div class="field"><label for="dq">2. Customer</label><div class="search"><span>${ic('search',18)}</span><input class="inp" id="dq" data-list="dayList" placeholder="Search any part of the name" value="${esc(UI.q.dayList||'')}" autocomplete="off"></div>
   <small class="muted">${L.length?L.length+' customer'+(L.length===1?'':'s')+' with invoices or credit notes on this date.':'Nobody has invoices or credit notes on this date.'}</small></div>
   ${pendAll?`<div class="hint" style="background:var(--warn-soft);color:var(--warn)">${pendAll} order${pendAll>1?'s':''} of this date ${pendAll>1?'are':'is'} not finalized yet and ${pendAll>1?'are':'is'} not included.</div>`:''}</div>
@@ -1328,6 +1357,9 @@ document.addEventListener('click',e=>{
    case 'create':{if(!UI.draft.lines.length)break;const d=UI.draft;act(async()=>{const oid=await newOrder(d);UI.draft=null;UI.view='pending';UI.hist=[];UI.modal={type:'receipt',id:oid,title:'Order created'};render();if(S.set.autoPrint)setTimeout(()=>printOrder(oid),350)});break}
    case 'savechg':{const d=UI.draft,idd=d.orderId;act(async()=>{await saveOrder(d);UI.draft=null;UI.view='pending';UI.modal={type:'receipt',id:idd,title:'Order updated'};render();if(S.set.autoPrint)setTimeout(()=>printOrder(idd),350)});break}
    case 'print':printOrder(id);break;
+   case 'datepick':{const v=id==='dd'?(UI.dayKey||dkey(now())):payState().date;const [y,mo]=String(v).split('-').map(Number);UI.modal={type:'date',target:id,value:v,y:y||new Date().getFullYear(),mo:(mo||1)-1};render();break}
+   case 'dpmove':{const m=UI.modal;const t=m.y*12+m.mo+Number(id);m.y=Math.floor(t/12);m.mo=((t%12)+12)%12;render();break}
+   case 'dppick':{const m=UI.modal;if(m.target==='dd'){UI.dayKey=id;UI.sel.dayCust=null}else if(m.target==='pd')payState().date=id;UI.modal=null;render();break}
    case 'daypick':UI.sel.dayCust=UI.sel.dayCust===id?null:id;render();break;
    case 'dayview':if(!id)break;UI.modal={type:'day',ccs:[id],key:UI.dayKey||dkey(now()),wide:true};render();break;
    case 'dayprint':if(id)printDay([id],UI.dayKey||dkey(now()),'a4');break;
