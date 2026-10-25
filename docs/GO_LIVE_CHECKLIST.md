@@ -59,7 +59,8 @@ history is imported there and checked customer by customer, and the app is teste
 | 13 | Phone check by the team (iPhone and Android) | Every screen usable; keyboard, bottom bar and pop-ups behave |
 
 ## Production-ready checklist (to confirm before handover)
-- [ ] Where the database lives and who backs it up; a free database or free web service can expire, sleep or lose data. Must be checked on Render.
+- [x] Where the database lives: a new Supabase project (ref rifycduhnpfnfgkqfrrb), separate from the old app's project. Confirmed by the owner on 25 Oct 2026.
+- [ ] That Supabase project's plan (a free project can pause itself after a period of no use), backups, and a restore test. Also whether the Render web service is on a free plan that sleeps.
 - [ ] A restore test: can the database be brought back from a backup.
 - [ ] Strong admin password changed from the first one; every user has their own app password and their own Odoo key; keys never in chat or files.
 - [ ] Only one copy of the app runs against one database.

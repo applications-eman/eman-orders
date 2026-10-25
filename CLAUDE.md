@@ -10,7 +10,7 @@ Read handover/HANDOVER.md first.
 - Odoo rules: invoices with cash rounding "Round to 1 SAR (0.50 up)"; payments FIFO oldest-first; discounts = credit notes to 500100; idempotency by ref; trays app-only append-only ledger; branches app-only.
 
 ## Project status (updated 18 Oct 2026)
-- Database decision: Replit's own PostgreSQL (not Supabase).
+- Database: the live app on Render uses its own new Supabase project, ref rifycduhnpfnfgkqfrrb (confirmed by the owner from Render's DATABASE_URL on 25 Oct 2026). It is NOT the old production project dispatch-order7 (ktsowuarfbapvxkvldev), which stays read-only. Plan (free or paid) and backups still to confirm.
 - Oct 1-10 history is imported in the Odoo DEMO and checked customer by customer (90 customers, 0 differences).
 - The orders app is built in this repository (see README.md). Code layout: server/ (API, Odoo posting, queue), public/ (screens), test/.
 - Secrets only as Replit/environment secrets: APP_SECRET, ADMIN_PASSWORD, ODOO_URL, ODOO_DB, ODOO_EXPECT_COMPANY, per-user Odoo API keys (stored encrypted in the database via the admin console).
